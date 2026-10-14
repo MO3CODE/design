@@ -27,7 +27,7 @@ export async function assetModel(): Promise<string> {
   const s = getSettings();
   if (s.assetModel) return s.assetModel;
   const { list } = await listModels();
-  for (const re of [/^gpt-5\.6-sol$/, /^gpt-5\.6/, /^gpt-5\.5$/, /^gpt-5/]) { const m = list.find(x => re.test(x.id)); if (m) return m.id; }
+  for (const re of [/^gpt-5\.6-luna$/, /^gpt-5\.6/, /^gpt-5\.5$/, /^gpt-5/]) { const m = list.find(x => re.test(x.id)); if (m) return m.id; }
   return resolveTier('vision');
 }
 
