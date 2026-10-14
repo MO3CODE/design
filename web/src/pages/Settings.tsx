@@ -18,6 +18,23 @@ const TIERS = [
   { k: 'vision', icon: <Eye size={17} />, name: 'البصري', use: 'الفحص البصري للتصميم المرسوم (يشوف الصورة)', hint: 'لازم يدعم الصور' },
 ] as const;
 
+function ImageTest() {
+  const [busy, setBusy] = useState(false); const [r, setR] = useState<any>(null);
+  return (
+    <div className="mt-4 pt-4 border-t border-ink/[.07] flex flex-wrap items-start gap-4">
+      <button className="btn-line" disabled={busy} onClick={async () => { setBusy(true); setR(null); try { setR(await api.post('/api/images/test')); } finally { setBusy(false); } }}>
+        {busy ? <Spinner /> : <Wand2 size={15} />} اختبر رسم الصور</button>
+      <span className="text-[12px] text-ink-mute flex-1 min-w-[220px]">احفظ الإعدادات أولاً. يرسم صورة صغيرة رخيصة (1024، جودة low) بالمزوّد المختار ويعرض النتيجة أو الخطأ كما هو.</span>
+      {r && (
+        <div className={`w-full rounded-xl p-3 text-[13px] flex items-start gap-3 ${r.ok ? 'bg-emerald-600/10 text-emerald-900' : 'bg-red-50 text-red-800'}`}>
+          {r.image && <img src={r.image} className="h-24 w-24 rounded-lg object-cover" alt="" />}
+          <div><b>{r.provider} · <span dir="ltr">{r.model}</span></b> — {r.message} <span className="text-ink-mute">({(r.ms / 1000).toFixed(1)}ث)</span></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPage({ health }: { health: any }) {
   const toast = useToast();
   const [s, setS] = useState<Settings | null>(null);
@@ -117,6 +134,7 @@ export default function SettingsPage({ health }: { health: any }) {
             </select>
             <p className="text-[12px] text-ink-mute mt-1.5">xhigh/max متاحة لموديلات 2.5 فقط — أغلى وأبطأ</p></div>
         </div>
+        <ImageTest />
       </section>
 
       <section className="card p-6 grid md:grid-cols-3 gap-6">

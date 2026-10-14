@@ -18,7 +18,7 @@ import { lintSpec } from './lint.js';
 import { designPost, revisePost, variantsPost, polishCaption, manualVersion, autoAssetsPost, editAssetPost } from './ai/designer.js';
 import { startJob, getJob, isBusy, summary, subscribe, cancelJob, projectJobs, resetStaleStates, type Emit } from './jobs.js';
 import { listModels, resolveTier } from './ai/router.js';
-import { generate as generateImage, assetModel } from './ai/images.js';
+import { generate as generateImage, assetModel, testImageProvider } from './ai/images.js';
 import { summary as usageSummary, live as usageLive, pricesChanged, priceOf } from './usage.js';
 import { getSettings, saveSettings, publicSettings } from './settings.js';
 
@@ -307,6 +307,7 @@ app.get('/api/models', wrap(async (req, res) => {
   res.json({ list, error, tiers });
 }));
 app.get('/api/usage', (req, res) => res.json(usageSummary({ project: req.query.project ? String(req.query.project) : undefined, post: req.query.post ? String(req.query.post) : undefined })));
+app.post('/api/images/test', wrap(async (_req, res) => res.json(await testImageProvider())));
 app.get('/api/usage/live', (_req, res) => usageLive(res));
 app.get('/api/prices', wrap(async (_req, res) => {
   const { list } = await listModels();

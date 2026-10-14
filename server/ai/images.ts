@@ -175,3 +175,23 @@ export async function generateAsset(pid: string, postId: string, a: PlannedAsset
     asset: { kind: a.kind, description: a.description, rev: 1, slide: a.slide, field: a.field, history: [{ at: now(), instruction: a.description, prompt: a.prompt }] } });
   return p;
 }
+
+/** اختبار سريع لمزوّد الرسم: صورة صغيرة رخيصة (1024، جودة low) — يرجّع الصورة أو الخطأ الحرفي */
+export async function testImageProvider(): Promise<{ ok: boolean; provider: string; model: string; message: string; image?: string; ms: number }> {
+  const s = getSettings(); const provider = s.imageProvider === 'radox' ? 'RadoxAI' : 'OpenAI';
+  const key = s.imageProvider === 'radox' ? s.radoxKey : s.openaiKey;
+  const base = (s.imageProvider === 'radox' ? s.radoxBaseUrl : s.openaiBaseUrl).replace(/\/$/, '');
+  const t0 = Date.now();
+  if (!key) return { ok: false, provider, model: s.imageModel, message: `ما فيه مفتاح ${provider}`, ms: 0 };
+  try {
+    const r = await fetch(base + '/images/generations', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: s.imageModel, prompt: 'A single red apple on a plain white background, studio photo.', n: 1, size: '1024x1024', quality: 'low', output_format: 'jpeg' }) });
+    const txt = await r.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
+    if (!r.ok) return { ok: false, provider, model: s.imageModel, ms: Date.now() - t0,
+      message: `${r.status} — ${j?.error?.message || txt.slice(0, 200)}${s.imageProvider === 'radox' && r.status === 404 ? ' (RadoxAI ما عنده خدمة توليد صور)' : ''}` };
+    const u = j.usage || {};
+    record({ kind: 'image', task: 'image_test', tier: 'image', model: s.imageModel, usage: { input: u.input_tokens || 0, output: u.output_tokens || 0, cacheRead: 0, cacheWrite: 0, images: 1 }, ok: true, ms: Date.now() - t0 });
+    const b64 = j.data?.[0]?.b64_json;
+    return { ok: !!b64, provider, model: s.imageModel, ms: Date.now() - t0, message: b64 ? 'يشتغل ✓' : 'رد بدون صورة', image: b64 ? `data:image/jpeg;base64,${b64}` : undefined };
+  } catch (e: any) { return { ok: false, provider, model: s.imageModel, message: e.message, ms: Date.now() - t0 }; }
+}
