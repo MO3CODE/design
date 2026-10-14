@@ -1,0 +1,15 @@
+node_modules/
+web/dist/
+data/
+fonts-private/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
+
+# خطوط تجارية — لا ترفعها لريبو عام (ضعها محلياً أو بمجلد FONTS_DIR)
+engine/assets/fonts/Expo*
+engine/assets/fonts/ExpoArabic*
+engine/assets/fonts/Bahij*

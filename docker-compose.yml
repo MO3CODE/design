@@ -1,0 +1,15 @@
+services:
+  studio:
+    build:
+      context: .
+      args:
+        WITH_CUTOUT: "1"   # 0 لصورة أصغر بدون قص الخلفية التلقائي
+    env_file: .env
+    environment:
+      SELF_URL: http://127.0.0.1:8787
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./data:/app/data
+      - ./fonts-private:/app/fonts-private:ro   # ضع هنا ملفات Expo Arabic و Bahij
+    restart: unless-stopped

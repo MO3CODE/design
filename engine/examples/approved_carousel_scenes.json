@@ -1,0 +1,378 @@
+{
+ "name": "04_company_or_branch_v17",
+ "preset": "carousel_clean",
+ "theme": "svc_formation",
+ "font": "serif",
+ "theme_override": {
+  "bg": "#F4F1E9",
+  "base": "#F4F1E9",
+  "ink": "#24201A",
+  "sub": "#4A4135",
+  "accent": "#8C734B",
+  "toneA": "#8C734B",
+  "toneAInk": "#6E5A33",
+  "toneB": "#6D6E71",
+  "toneBInk": "#4E4F53",
+  "markBg": "#24201A",
+  "markInk": "#F4F1E9",
+  "glow": "none",
+  "vign": "rgba(0,0,0,0)",
+  "card": "rgba(255,255,255,.7)",
+  "cardEdge": "rgba(110,90,51,.22)",
+  "pillBg": "#24201A",
+  "pillInk": "#F4F1E9",
+  "tex": "cotton",
+  "texOp": 0.6,
+  "mottleOp": 0.14,
+  "grainOp": 0.05
+ },
+ "caption": "شركة أم فرع؟ الاختيار الخاطئ قد يكلفك وقتًا ومسؤولية أكبر.\n\nاسحب وتعرّف على الفروق 👈 واحفظ المنشور للرجوع إليه.",
+ "hashtags": [
+  "#بوابة_المستثمر",
+  "#تأسيس_شركات",
+  "#الاستثمار_في_السعودية",
+  "#فرع_شركة_أجنبية",
+  "#وزارة_الاستثمار",
+  "#المستثمر_الأجنبي"
+ ],
+ "photo_fit": null,
+ "slides": [
+  {
+   "type": "concept",
+   "title": [
+    "تأسيس شركة *مستقلة*",
+    "أم فتح *فرع* لشركتك",
+    "الأجنبية في السعودية؟"
+   ],
+   "title_fs": 82,
+   "box_area": {
+    "top": 240,
+    "left": 80,
+    "right": 80
+   },
+   "text_h": 0.49,
+   "photo": {
+    "src": "photos/s21_warm.png",
+    "area": "full",
+    "fade": false,
+    "scrim": "none",
+    "treat": "none",
+    "grain": 0,
+    "shift": 40,
+    "flip": false,
+    "fg": true
+   },
+   "align": "center",
+   "v": "top",
+   "logo_variant": "color",
+   "floor": false,
+   "grow": false,
+   "motif": "none"
+  },
+  {
+   "type": "concept",
+   "title": [],
+   "box_area": {
+    "top": 230,
+    "left": 70,
+    "right": 70
+   },
+   "text_h": 0.613,
+   "sections": [
+    {
+     "s": "duo",
+     "style": "open",
+     "hfs": 50,
+     "fs": 36,
+     "gap": 0,
+     "items": [
+      {
+       "icon": "building",
+       "tone": "a",
+       "h": "الشركة المستقلة",
+       "t": "كيان سعودي مستقل له شخصية اعتبارية خاصة به."
+      },
+      {
+       "icon": "git-branch",
+       "tone": "b",
+       "h": "الفرع",
+       "t": "امتداد للشركة الأم في الخارج، وليس كيانًا مستقلًا."
+      }
+     ]
+    }
+   ],
+   "photo": {
+    "src": "photos/s19.webp",
+    "area": "full",
+    "fade": false,
+    "scrim": "none",
+    "treat": "none",
+    "grain": 0,
+    "shift": 60,
+    "flip": true,
+    "fg": true
+   },
+   "logo_variant": "color",
+   "floor": false,
+   "grow": true,
+   "grow_max": 1.3,
+   "v": "center",
+   "motif": "none"
+  },
+  {
+   "type": "concept",
+   "title": [
+    "من يستطيع تأسيس",
+    "*شركة مستقلة*؟"
+   ],
+   "title_fs": 84,
+   "box_area": {
+    "top": 240,
+    "left": 80,
+    "right": 80
+   },
+   "text_h": 0.592,
+   "sections": [
+    {
+     "s": "chipsx",
+     "items": [
+      "مستثمر فرد",
+      "شركة أجنبية"
+     ],
+     "fs": 40,
+     "gap": 40
+    }
+   ],
+   "photo": {
+    "src": "photos/s18.webp",
+    "area": "full",
+    "fade": false,
+    "scrim": "none",
+    "treat": "none",
+    "grain": 0,
+    "shift": 70,
+    "flip": false,
+    "fg": true
+   },
+   "logo_variant": "color",
+   "floor": false,
+   "grow": true,
+   "grow_max": 1.3,
+   "motif": "none"
+  },
+  {
+   "type": "concept",
+   "title": [
+    "من يستطيع فتح *فرع*؟"
+   ],
+   "title_fs": 88,
+   "box_area": {
+    "top": 240,
+    "left": 80,
+    "right": 80
+   },
+   "text_h": 0.49,
+   "sections": [
+    {
+     "s": "hl",
+     "t": "الشركة الأجنبية فقط",
+     "note": "ولا يُعد الفرع خيارًا متاحًا للمستثمر الفردي.",
+     "gap": 34
+    }
+   ],
+   "photo": {
+    "src": "photos/s16.webp",
+    "area": "full",
+    "fade": false,
+    "scrim": "none",
+    "treat": "none",
+    "grain": 0,
+    "shift": 50,
+    "flip": false,
+    "fg": true
+   },
+   "logo_variant": "color",
+   "floor": false,
+   "grow": true,
+   "grow_max": 1.3,
+   "motif": "none"
+  },
+  {
+   "type": "concept",
+   "title": [
+    "ومن أبرز متطلبات",
+    "*الشركة الأم* عادةً:"
+   ],
+   "title_fs": 66,
+   "box_area": {
+    "top": 240,
+    "left": 80,
+    "right": 80
+   },
+   "text_h": 0.601,
+   "sections": [
+    {
+     "s": "reqs",
+     "style": "big",
+     "gap": 20,
+     "items": [
+      "أن تكون قائمة وسجلها التجاري ساريًا.",
+      "وجود قوائم مالية.",
+      "استيفاء متطلبات المدة التشغيلية بحسب الحالة."
+     ]
+    }
+   ],
+   "photo": {
+    "src": "photos/s17.webp",
+    "area": "full",
+    "fade": false,
+    "scrim": "none",
+    "treat": "none",
+    "grain": 0,
+    "shift": 215,
+    "flip": false,
+    "fg": true
+   },
+   "logo_variant": "color",
+   "floor": false,
+   "grow": true,
+   "grow_max": 1.3,
+   "motif": "none"
+  },
+  {
+   "type": "concept",
+   "title": [
+    "المسؤولية القانونية *والمالية*"
+   ],
+   "title_fs": 70,
+   "box_area": {
+    "top": 240,
+    "left": 80,
+    "right": 80
+   },
+   "text_h": 0.556,
+   "sections": [
+    {
+     "s": "duo",
+     "style": "open",
+     "hfs": 42,
+     "fs": 30,
+     "gap": 34,
+     "items": [
+      {
+       "icon": "scale",
+       "tone": "a",
+       "h": "الشركة المستقلة",
+       "t": "تتمتع بشخصية اعتبارية مستقلة، وتكون مسؤولية المالك وفقًا لنوع الشركة وهيكلها."
+      },
+      {
+       "icon": "alert-triangle",
+       "tone": "b",
+       "h": "الفرع",
+       "t": "تظل الشركة الأم مسؤولة عن التزامات الفرع، لأنه جزء منها وليس كيانًا مستقلًا."
+      }
+     ]
+    }
+   ],
+   "photo": {
+    "src": "photos/s15.webp",
+    "area": "full",
+    "fade": false,
+    "scrim": "none",
+    "treat": "none",
+    "grain": 0,
+    "shift": 160,
+    "flip": true,
+    "fg": true
+   },
+   "logo_variant": "color",
+   "floor": false,
+   "grow": true,
+   "grow_max": 1.3,
+   "motif": "none"
+  },
+  {
+   "type": "concept",
+   "theme": "graphite",
+   "logo_variant": "white",
+   "theme_override": {
+    "bg": "#26272A",
+    "base": "radial-gradient(110% 80% at 50% 40%,#36373B 0%,#26272A 55%,#17181A 100%)",
+    "ink": "#F4F1EA",
+    "sub": "#C9C7C2",
+    "accent": "#D8B985",
+    "glowC": "#E2C38E",
+    "pillBg": "#CEB18F",
+    "pillInk": "#1D1E20",
+    "markBg": "#CEB18F",
+    "markInk": "#1D1E20",
+    "tex": "paper_soft",
+    "texOp": 0.4
+   },
+   "title": [
+    "لتحديد الخيار",
+    "*المناسب لك*",
+    "تواصل معنا"
+   ],
+   "title_fs": 104,
+   "v": "center",
+   "box_area": {
+    "top": 240,
+    "left": 80,
+    "right": 80,
+    "bottom": 520
+   },
+   "text_h": 0.69,
+   "phone_line": {
+    "bottom": 400,
+    "fs": 50
+   },
+   "backdrop": {
+    "kind": "motif",
+    "cx": 0.78,
+    "cy": 0.84,
+    "w": 980,
+    "fa": 0.04,
+    "sa": 0.35,
+    "sw": 2.6,
+    "halo": 16,
+    "ha": 0.18,
+    "mask": "linear-gradient(320deg,#000 30%,rgba(0,0,0,.35) 62%,transparent 85%)",
+    "z": "mid"
+   },
+   "motif": "none"
+  }
+ ],
+ "pager_style": "boxed",
+ "logo_pos": "top-center",
+ "logo_w": 150,
+ "span": [
+  {
+   "kind": "motif",
+   "z": "mid",
+   "cx": 1080,
+   "cy": 95,
+   "w": 640,
+   "sa": 0.5,
+   "rot": 0
+  },
+  {
+   "kind": "motif",
+   "z": "mid",
+   "cx": 3240,
+   "cy": 1150,
+   "w": 700,
+   "sa": 0.5,
+   "rot": 0
+  },
+  {
+   "kind": "motif",
+   "z": "mid",
+   "cx": 5400,
+   "cy": 95,
+   "w": 640,
+   "sa": 0.5,
+   "rot": 0
+  }
+ ]
+}

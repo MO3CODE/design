@@ -1,0 +1,106 @@
+{
+  "name_ar": "بوابة المستثمر",
+  "name_en": "Investor Gate",
+  "tagline": "من التأسيس إلى النمو… حلول متكاملة لأعمالك",
+  "since": 2009,
+  "contacts": {
+    "phones": [
+      {
+        "label": "",
+        "display": "+966 55 39 88 033",
+        "tel": "+966553988033"
+      },
+      {
+        "label": "الرقم الموحد",
+        "display": "92 00 17 909",
+        "tel": "920017909"
+      }
+    ],
+    "website": "investors-gate.com",
+    "email": "info@investors-gate.com",
+    "whatsapp": "966535288033",
+    "handles": {
+      "instagram": "investorsgate.sa",
+      "x": "investors_gate",
+      "youtube": "@investors_gate",
+      "linkedin": "investors-gate"
+    },
+    "_note": "تقويم المحتوى (أكتوبر 2026) من العميل يعتمد +966 55 39 88 033 — الموقع وواتساب الموقع فيه 053 528 8033؛ لو العميل حدّد رقم بالطلب استخدمه."
+  },
+  "stats": [
+    {
+      "n": "+120,000",
+      "l": "معاملة منجزة"
+    },
+    {
+      "n": "+8,133",
+      "l": "شركة تم تأسيسها"
+    },
+    {
+      "n": "17+",
+      "l": "عامًا من الخبرة"
+    },
+    {
+      "n": "ISO 9001",
+      "l": "شهادة الجودة"
+    }
+  ],
+  "colors": {
+    "gold": "#A29265",
+    "gold_light": "#CEB18F",
+    "gold_web": "#8C734B",
+    "gray": "#6D6E71",
+    "yellow": "#EFBF04",
+    "cream": "#F8ECD4",
+    "espresso": "#443C2F",
+    "ink": "#3F372B",
+    "sand": "#EBD3B4",
+    "service": {
+      "trademark": [
+        "#C4B89B",
+        "#9E9FA1"
+      ],
+      "premium_residency": [
+        "#868789",
+        "#EEBF1C"
+      ],
+      "investor_services": [
+        "#B3A47F",
+        "#868789"
+      ],
+      "company_formation": [
+        "#E6E0D3",
+        "#C7C8C9"
+      ],
+      "accounting": [
+        "#F1C431",
+        "#C7C8C9"
+      ]
+    }
+  },
+  "hashtags": {
+    "core": [
+      "#بوابة_المستثمر",
+      "#السعودية",
+      "#قطاع_الأعمال",
+      "#رواد_الأعمال"
+    ],
+    "formation": [
+      "#تأسيس_شركات",
+      "#الاستثمار_في_السعودية",
+      "#المستثمر_الأجنبي",
+      "#وزارة_الاستثمار"
+    ],
+    "residency": [
+      "#الإقامة_المميزة"
+    ],
+    "accounting": [
+      "#القوائم_المالية",
+      "#مراجع_الحسابات",
+      "#الزكاة_والضريبة"
+    ],
+    "vision": [
+      "#رؤية_2030"
+    ]
+  }
+}

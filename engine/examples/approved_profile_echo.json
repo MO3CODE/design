@@ -1,0 +1,142 @@
+{
+ "name": "اسم_الموظف_بالانجليزي",
+ "format": "square",
+ "font": "mix",
+ "swipe": false,
+ "slides": [
+  {
+   "type": "profile",
+   "logo": false,
+   "theme": "ivory",
+   "texture": {
+    "kind": "cotton",
+    "op": 0.4,
+    "boost": 0.06
+   },
+   "theme_override": {
+    "base": "radial-gradient(100% 90% at 50% 40%,#FBF9F4 0%,#F3EFE7 60%,#E9E2D3 100%)",
+    "glowC": "#FFFFFF",
+    "--x": 0
+   },
+   "photo": {
+    "src": "photos/اسم_الصورة.jpg",
+    "crop": [
+     0.12,
+     0.16,
+     0.88,
+     0.8
+    ],
+    "treat": "natural",
+    "grain": 0.02,
+    "cutout": true
+   },
+   "profile": {
+    "layout": "echo",
+    "name": "الاسم الثنائي",
+    "role": "المسمى الوظيفي",
+    "echo": false,
+    "kashida": "1.12",
+    "frame": false,
+    "divider": false,
+    "role_style": "glass",
+    "logo_w": 200,
+    "logo_top": 70,
+    "person_top": 290,
+    "person_h": 580,
+    "name_top": 872,
+    "glow": 0.55
+   }
+  },
+  {
+   "type": "profile",
+   "logo": false,
+   "theme": "graphite",
+   "texture": {
+    "kind": "stucco",
+    "op": 0.3,
+    "boost": 0.05
+   },
+   "theme_override": {
+    "bg": "#26272A",
+    "base": "radial-gradient(100% 90% at 50% 40%,#3A3B40 0%,#26272A 55%,#151617 100%)",
+    "glowC": "#E2C38E"
+   },
+   "photo": {
+    "src": "photos/اسم_الصورة.jpg",
+    "crop": [
+     0.12,
+     0.16,
+     0.88,
+     0.8
+    ],
+    "treat": "natural",
+    "grain": 0.02,
+    "cutout": true
+   },
+   "profile": {
+    "layout": "echo",
+    "name": "الاسم الثنائي",
+    "role": "المسمى الوظيفي",
+    "echo": false,
+    "kashida": "1.12",
+    "glow": 0.28,
+    "echo_fill": 0.18,
+    "frame": false,
+    "divider": false,
+    "role_style": "glass",
+    "logo_w": 200,
+    "logo_top": 70,
+    "person_top": 290,
+    "person_h": 580,
+    "name_top": 872
+   }
+  },
+  {
+   "type": "profile",
+   "logo": false,
+   "theme": "olive",
+   "texture": {
+    "kind": "stucco",
+    "op": 0.4,
+    "boost": 0.07
+   },
+   "theme_override": {
+    "base": "radial-gradient(100% 90% at 50% 40%,#BDAC7E 0%,#A29265 55%,#8A7B52 100%)",
+    "glowC": "#FFF6E2",
+    "vign": "rgba(0,0,0,0)"
+   },
+   "photo": {
+    "src": "photos/اسم_الصورة.jpg",
+    "crop": [
+     0.12,
+     0.16,
+     0.88,
+     0.8
+    ],
+    "treat": "natural",
+    "grain": 0.02,
+    "cutout": true
+   },
+   "profile": {
+    "layout": "echo",
+    "name": "الاسم الثنائي",
+    "role": "المسمى الوظيفي",
+    "echo": false,
+    "kashida": "1.12",
+    "echo_color": "#FFFFFF",
+    "glow": 0.35,
+    "echo_fill": 0.2,
+    "motif_color": "#FFFFFF",
+    "frame_color": "#FFFFFF",
+    "frame": false,
+    "divider": false,
+    "role_style": "glass",
+    "logo_w": 200,
+    "logo_top": 70,
+    "person_top": 290,
+    "person_h": 580,
+    "name_top": 872
+   }
+  }
+ ]
+}

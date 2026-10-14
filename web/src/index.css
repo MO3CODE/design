@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face { font-family: 'ThSans'; font-weight: 400; src: url('/thmanyahsans-Regular.otf'); font-display: swap; }
+@font-face { font-family: 'ThSans'; font-weight: 500 600; src: url('/thmanyahsans-Medium.otf'); font-display: swap; }
+@font-face { font-family: 'ThSans'; font-weight: 700 900; src: url('/thmanyahsans-Bold.otf'); font-display: swap; }
+@font-face { font-family: 'Plex'; font-weight: 400; src: url('/IBMPlexSansArabic-Regular.ttf'); font-display: swap; }
+@font-face { font-family: 'Plex'; font-weight: 600 700; src: url('/IBMPlexSansArabic-SemiBold.ttf'); font-display: swap; }
+@font-face { font-family: 'Expo'; font-weight: 500; src: url('/engine/assets/fonts/Expo%20Arabic%20Medium.ttf'); font-display: swap; }
+@font-face { font-family: 'Expo'; font-weight: 700 900; src: url('/engine/assets/fonts/Expo%20Arabic%20Bold.ttf'); font-display: swap; }
+@font-face { font-family: 'ThSerif'; font-weight: 700; src: url('/engine/assets/fonts/thmanyahserifdisplay-Bold.otf'); font-display: swap; }
+
+:root { color-scheme: light; }
+html, body, #root { height: 100%; }
+body { font-family: 'ThSans', 'Plex', system-ui, sans-serif; font-feature-settings: "kern" 1; }
+::selection { background: #CEB18F; color: #26272A; }
+
+/* شريط تمرير هادئ */
+* { scrollbar-width: thin; scrollbar-color: #CFC7B4 transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: #CFC7B4; border-radius: 8px; }
+.dark-scroll { scrollbar-color: #4A4B51 transparent; }
+
+/* ملمس ورق خفيف للخلفية العامة — نفس روح الهوية */
+.paper { background-color: #F4F1E9; background-image: radial-gradient(1200px 600px at 100% -10%, rgba(162,146,101,.10), transparent 60%), radial-gradient(900px 500px at -10% 110%, rgba(38,39,42,.05), transparent 60%); }
+
+.btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 h-10 text-sm font-semibold transition-all duration-150 select-none disabled:opacity-45 disabled:cursor-not-allowed whitespace-nowrap; }
+.btn-primary { @apply btn bg-graphite text-ivory hover:bg-graphite-3 active:scale-[.98] shadow-card; }
+.btn-gold { @apply btn text-graphite active:scale-[.98] shadow-card; background: linear-gradient(180deg, #D8C39C, #B9A479); }
+.btn-gold:hover:not(:disabled) { background: linear-gradient(180deg, #E2CFAA, #C2AD82); }
+.btn-ghost { @apply btn bg-transparent text-ink hover:bg-ink/5; }
+.btn-line { @apply btn border border-ink/15 bg-white/70 text-ink hover:bg-white hover:border-ink/25; }
+.btn-danger { @apply btn bg-transparent text-red-700 hover:bg-red-50; }
+.btn-sm { @apply h-8 px-3 text-[13px] rounded-lg; }
+.btn-icon { @apply btn h-9 w-9 px-0 rounded-lg; }
+
+.card { @apply rounded-2xl bg-white/80 border border-ink/[.07] shadow-card backdrop-blur-sm; }
+.input { @apply w-full rounded-xl border border-ink/15 bg-white/90 px-3.5 py-2.5 text-[15px] text-ink placeholder:text-ink-mute outline-none transition focus:border-gold focus:ring-4 focus:ring-gold/15; }
+.label { @apply block text-[13px] font-semibold text-ink-soft mb-1.5; }
+.chip { @apply inline-flex items-center gap-1.5 rounded-full px-2.5 h-6 text-[12px] font-semibold whitespace-nowrap; }
+.kbd { @apply inline-flex items-center rounded-md border border-ink/15 bg-white px-1.5 text-[11px] text-ink-soft; }
+
+.fade-in { animation: fadeIn .25s ease both; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.shimmer { background: linear-gradient(90deg, rgba(162,146,101,.08) 25%, rgba(162,146,101,.22) 50%, rgba(162,146,101,.08) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.pulse-dot { animation: pulseDot 1.2s ease-in-out infinite; }
+@keyframes pulseDot { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
+
+/* إطار الشريحة: مربعات خفيفة عشان تبان الشفافية/الحواف */
+.checker { background-color: #E9E4D8; background-image: linear-gradient(45deg, #E1DBCD 25%, transparent 25%), linear-gradient(-45deg, #E1DBCD 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #E1DBCD 75%), linear-gradient(-45deg, transparent 75%, #E1DBCD 75%); background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
