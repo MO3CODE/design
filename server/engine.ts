@@ -87,9 +87,29 @@ export function fontCSS() {
 /* ── تجهيز spec للرسم: preset + الصور (تدريج/قص) + QR → روابط ── */
 export const fileUrl = (abs: string) => '/files/' + path.relative(path.join(DATA, 'projects'), abs).split(path.sep).map(encodeURIComponent).join('/');
 
-function findPhoto(post: Post, src: string) {
-  const s = String(src || '').replace(/^photos[\\/]/, '').trim();
-  return post.photos.find(p => p.id === s || p.name === s || p.file === s || p.name.replace(/\.[^.]+$/, '') === s.replace(/\.[^.]+$/, ''));
+/* ── مكتبة الصور المشتركة (صور حقيقية من Unsplash — خلفيات المملكة وتوقيع وأشخاص) متاحة لكل المنشورات ── */
+export const LIBRARY: Record<string, string> = {
+  kingdom_blue: 'برج المملكة على سماء زرقاء (خلفية المملكة المعتمدة — bg_photo mono)',
+  kingdom_sunset: 'برج المملكة وقت الغروب بسماء برتقالية',
+  faisaliah: 'برج الفيصلية (طولي)',
+  tower_bw: 'برج المملكة أبيض وأسود (طولي)',
+  car_window: 'أفق الرياض مع نخيل وسيارات',
+  signing_office: 'رجلين يوقعان أوراق على طاولة مكتب',
+  signing_warm: 'يد تكتب على ورقة (دافئ)',
+  signing_dark: 'رجل يوقع مستند بقلم (داكن، طولي)',
+  saudi_man: 'رجل بثوب أبيض واقف (طولي)',
+  bisht: 'رجل بلبس تقليدي وبشت بني',
+  man_bw: 'رجل أبيض وأسود',
+};
+const LIB_DIR = path.join(ENGINE, 'library');
+
+function findPhoto(post: Post, src: string): { abs: string; alpha: boolean } | null {
+  const s = String(src || '').replace(/^photos[\/]/, '').trim();
+  const p = post.photos.find(x => x.id === s || x.name === s || x.file === s || x.name.replace(/\.[^.]+$/, '') === s.replace(/\.[^.]+$/, ''));
+  if (p) return { abs: p.file, alpha: p.alpha };
+  const stem = s.replace(/^lib:/, '').replace(/\.[^.]+$/, '');
+  if (LIBRARY[stem] && fs.existsSync(path.join(LIB_DIR, stem + '.jpg'))) return { abs: path.join(LIB_DIR, stem + '.jpg'), alpha: false };
+  return null;
 }
 
 export interface PrepareOut { spec: any; warnings: string[] }
@@ -103,7 +123,7 @@ export async function prepareSpec(pid: string, post: Post, spec0: any): Promise<
     if (!ph || !ph.src) return;
     const p = findPhoto(post, ph.src);
     if (!p) { warnings.push(`الصورة غير موجودة (تخطيتها): ${ph.src}`); for (const k of Object.keys(ph)) delete ph[k]; return; }
-    const src = path.join(dir, 'photos', p.file);
+    const src = path.isAbsolute(p.abs) ? p.abs : path.join(dir, 'photos', p.abs);
     const cut = (ph.cutout ?? ph.area === 'cutout') === true || ph.cutout === true;
     try {
       const r = await prepPhoto(src, work, { treat: ph.treat || defTreat, grain: ph.grain ?? 0.06, cutout: cut && !p.alpha, crop: ph.crop });
@@ -127,7 +147,7 @@ export async function prepareSpec(pid: string, post: Post, spec0: any): Promise<
     if (sl.bg_photo) await doPhoto(sl.bg_photo, sl.bg_photo.treat || 'mono');
     for (const sec of sl.sections || []) await doPhoto(sec.photo, dt);
     if (sl.hero) await doPhoto(sl.hero.photo, dt);
-    if (sl.device?.src) { const p = findPhoto(post, sl.device.src); if (p) sl.device._file = fileUrl(path.join(dir, 'photos', p.file)); }
+    if (sl.device?.src) { const p = findPhoto(post, sl.device.src); if (p && !path.isAbsolute(p.abs)) sl.device._file = fileUrl(path.join(dir, 'photos', p.abs)); }
     if (sl.qr) {
       const q = path.join(work, `qr_${crypto.createHash('md5').update(String(sl.qr)).digest('hex').slice(0, 8)}.png`);
       if (!fs.existsSync(q)) { fs.mkdirSync(work, { recursive: true }); await QRCode.toFile(q, String(sl.qr), { margin: 1, scale: 20, errorCorrectionLevel: 'M', color: { dark: '#2B241A', light: '#FFFFFF' } }); }

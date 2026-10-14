@@ -290,6 +290,7 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 const server = app.listen(cfg.port, () => {
   const s = getSettings();
   console.log(`\n  استوديو بوابة المستثمر  →  http://localhost:${cfg.port}`);
-  console.log(`  AI: ${s.provider} ${(s.provider === 'anthropic' ? s.anthropicKey : s.radoxKey) ? '✓' : '✗ (أضف المفتاح من الإعدادات)'} · التوجيه: ${s.routing} · القص: ${cutoutAvailable() ? '✓' : '✗'}\n`);
+  console.log(`  AI: ${s.provider} ${(s.provider === 'anthropic' ? s.anthropicKey : s.radoxKey) ? '✓' : '✗ (أضف المفتاح من الإعدادات)'} · التوجيه: ${s.routing}`);
+  checkCutout().then(ok => console.log(`  قص الخلفية (rembg): ${ok ? '✓' : '✗ — ارفع الأصول PNG مقصوصة'}\n`));
 });
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, async () => { await closeRenderer(); server.close(); process.exit(0); });

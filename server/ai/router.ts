@@ -21,6 +21,7 @@ const ANTHROPIC_MODELS: ModelInfo[] = [
   { id: 'claude-haiku-5-5', vision: true, reasoning: true, inPer1k: 0.0001, outPer1k: 0.0005 },
 ];
 
+const VISION_NAMES = /claude|gpt-(4o|4\.1|5)|gemini|grok-4|kimi-k3|qwen.*(vl|max)|seed-2/i;
 function num(v: any): number | undefined { const n = Number(v); return isFinite(n) && v !== null && v !== '' ? n : undefined; }
 
 function parseModel(m: any): ModelInfo {
@@ -28,8 +29,10 @@ function parseModel(m: any): ModelInfo {
   const has = (k: string) => Array.isArray(caps) ? caps.some((c: any) => String(c).toLowerCase().includes(k)) : !!(caps && (caps[k] || caps[k + '_input']));
   const p = m.pricing || {};
   const pick = (re: RegExp) => { for (const [k, v] of Object.entries(p)) if (re.test(k)) return num(v); };
-  return { id: m.id, name: m.name || m.display_name, context: num(m.context_window), vision: has('vision') || has('image'),
-    reasoning: has('reason'), inPer1k: pick(/prompt|input/i), outPer1k: pick(/completion|output/i) };
+  // RadoxAI قد لا يرجّع capabilities — نستنتج دعم الصور من اسم الموديل (العائلات المعروفة بالرؤية)
+  const vision = caps ? (has('vision') || has('image')) : VISION_NAMES.test(m.id);
+  return { id: m.id, name: m.name || m.display_name, context: num(m.context_window), vision,
+    reasoning: caps ? has('reason') : true, inPer1k: pick(/prompt|input/i), outPer1k: pick(/completion|output/i) };
 }
 
 export async function listModels(force = false): Promise<{ list: ModelInfo[]; error?: string }> {

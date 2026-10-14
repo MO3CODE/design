@@ -54,7 +54,7 @@ export function draftSpec(post: Post): any {
   const single = post.kind !== 'carousel';
   const chunks = single ? [post.design || post.title] : splitSlides(post.design || post.title);
   const slides = chunks.map((chunk, i) => {
-    const lines = chunk.split('\n').map(x => x.trim()).filter(l => l && !/^[\W_]+$/u.test(l));
+    const lines = chunk.split('\n').map(x => x.trim()).filter(l => l && !/^[\p{P}\p{S}\s_]+$/u.test(l));   // سطر رموز/ترقيم فقط (\W بالجافاسكربت يعتبر العربي غير حرف)
     const kept = lines.filter(l => !/اقرأ\s*الكابشن|اسحب\s*ل?(معرفة|تعرف)/.test(l));
     const L = kept.length ? kept : lines;
     const items: string[] = [], body: string[] = [];

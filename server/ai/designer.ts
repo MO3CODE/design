@@ -8,7 +8,7 @@ import { route, record, canEscalate, classifyFeedback, listModels, type Task, ty
 import { systemFor } from './knowledge.js';
 import { getSettings } from '../settings.js';
 import { draftSpec } from '../calendar.js';
-import { prepareSpec, clone, deepMerge, fileUrl } from '../engine.js';
+import { prepareSpec, clone, deepMerge, fileUrl, LIBRARY } from '../engine.js';
 import { renderSlides, scoreOf } from '../render.js';
 import { lintSpec, tasteWarnings } from '../lint.js';
 import { thumbForAI } from '../photos.js';
@@ -17,8 +17,8 @@ import { mutate, getProject, findPost, postDir, uid, now, currentVersion, type P
 export type Emit = (ev: Record<string, any>) => void;
 
 /* ── استدعاء مع تصعيد تلقائي: أرخص موديل أولاً، ولو فشل (JSON/تحقق) يصعد مستوى ── */
-async function call<T>(task: Task, o: { preset?: string; messages: Msg[]; maxTokens?: number; post?: string; validate: (j: any) => T }, emit: Emit): Promise<{ out: T; route: Route }> {
-  let lastErr: any;
+async function call<T>(task: Task, o0: { preset?: string; messages: Msg[]; maxTokens?: number; post?: string; validate: (j: any) => T }, emit: Emit): Promise<{ out: T; route: Route }> {
+  let lastErr: any; let o = o0;
   for (let attempt = 0; attempt < 3; attempt++) {
     const r = await route(task, attempt);
     emit({ type: 'route', task, tier: r.tier, model: r.model, reason: r.reason });
@@ -35,7 +35,8 @@ async function call<T>(task: Task, o: { preset?: string; messages: Msg[]; maxTok
       return { out: o.validate(extractJSON(res.text)), route: r };
     } catch (e: any) {
       lastErr = e;
-      if (e instanceof AIError && !e.retryable && e.status !== 422) throw e;   // مفتاح/رصيد/صلاحية — لا فائدة من التكرار
+      if (e instanceof AIError && e.status === 422 && /صور|image/i.test(e.message)) { o = { ...o, messages: stripImages(o.messages) }; emit({ type: 'log', level: 'warn', text: `${r.model} ما يدعم الصور — أعدت بدونها` }); continue; }
+      if (e instanceof AIError && !e.retryable) throw e;   // مفتاح/رصيد/صلاحية — لا فائدة من التكرار
       emit({ type: 'log', level: 'warn', text: `${r.model}: ${e.message}` });
       if (!canEscalate(r) && attempt > 0) break;
     }
@@ -56,13 +57,17 @@ function postBrief(post: Post): string {
   ].join('\n');
 }
 
+const LIB_TEXT = '## مكتبة الصور المشتركة (متاحة دائماً — استخدم src كما هو؛ لا تستخدم أي مسار غير الصور المرفوعة وهذه)\n' +
+  Object.entries(LIBRARY).map(([k, d]) => `- src:"lib:${k}" · ${d}`).join('\n');
+
 async function photoParts(pid: string, post: Post, max = 8): Promise<Part[]> {
-  if (!post.photos.length) return [{ type: 'text', text: '## الصور المرفوعة\nلا يوجد — صمّم بدون أصل (عناصر مرسومة/سهم الهوية/جداول) واكتب photo_requests.' }];
+  if (!post.photos.length) return [{ type: 'text', text: '## الصور المرفوعة\nلا يوجد — صمّم بدون أصل (عناصر مرسومة/سهم الهوية/جداول/مكتبة الصور) واكتب photo_requests.\n\n' + LIB_TEXT }];
   const parts: Part[] = [{ type: 'text', text: '## الصور المرفوعة (استخدم src كما هو)\n' + post.photos.map(p =>
     `- src:"${p.id}" · ${p.name} · ${p.w}×${p.h} · ${p.alpha ? 'PNG شفاف (أصل مقصوص جاهز)' : 'صورة كاملة بخلفية'}${p.note ? ' · ملاحظة: ' + p.note : ''}`).join('\n') }];
   for (const p of post.photos.slice(0, max)) {
     try { const t = await thumbForAI(path.join(postDir(pid, post.id), 'photos', p.file), 512); parts.push({ type: 'text', text: `صورة src:"${p.id}"` }, { type: 'image', ...t }); } catch {}
   }
+  parts.push({ type: 'text', text: LIB_TEXT });
   return parts;
 }
 
@@ -139,7 +144,7 @@ async function fixLoop(pid: string, post: Post, spec: any, emit: Emit, rounds: n
   const s = getSettings();
   for (let i = 0; i < rounds && s.autoFix && hasProblems(pv.qc); i++) {
     emit({ type: 'step', text: `إصلاح أخطاء الفحص (${pv.qc.errors.length + pv.qc.lint.filter(l => l.startsWith('❌')).length})` });
-    const { out } = await call('fix', { post: post.id, maxTokens: 6000, validate: validateOps, messages: [{ role: 'user', content:
+    const { out } = await call('fix', { post: post.id, maxTokens: 12000, validate: validateOps, messages: [{ role: 'user', content:
       `## spec الحالي\n${JSON.stringify(spec)}\n\n## أخطاء الفحص الآلي (لازم تختفي)\n${[...pv.qc.errors, ...pv.qc.lint].join('\n')}\n\n` +
       `أصلحها بأقل تغيير: «النص أكبر من المساحة» → صغّر title_fs/fs أو text_h أكبر · «نص يركب على الأصل» → صغّر photo.h أو كبّر text_h · ` +
       `«تلامس نصوص» → gap/مسافات · تباين → theme_override أو مكان النص · إملاء → صحّح الكلمة فقط (النص حرفي غير ذلك).\n${CONTRACT_PATCH}` }] }, emit);
@@ -159,7 +164,7 @@ async function reviewLoop(pid: string, post: Post, spec: any, pv: Awaited<Return
       const b = await sharp(pv.images[k]).resize({ width: 540 }).jpeg({ quality: 80 }).toBuffer();
       imgs.push({ type: 'text', text: `الشريحة ${k + 1}` }, { type: 'image', data: b.toString('base64'), media: 'image/jpeg' });
     }
-    const { out } = await call('review', { post: post.id, maxTokens: 5000, messages: [{ role: 'user', content: [
+    const { out } = await call('review', { post: post.id, maxTokens: 10000, messages: [{ role: 'user', content: [
       { type: 'text', text: `${postBrief(post)}\n\n## spec\n${JSON.stringify(spec)}\n\n## نتيجة الفحص الآلي\nالدرجة ${pv.qc.score} · ${[...pv.qc.errors, ...pv.qc.warnings].join(' | ') || 'سليم'}` },
       ...imgs,
       { type: 'text', text: `افحص كل شريحة بعين مدير فني: نص يلمس أصل/شعار، كلمة يتيمة، فراغ ميت كبير، أصل صغير أو يتكرر، أصل لا يطابق نصه (flip)، زخرفة فوق النص، ` +
@@ -205,7 +210,7 @@ export async function designPost(pid: string, postId: string, emit: Emit, opts: 
     { type: 'text', text: `## مسودة آلية من التقويم (تقسيم الشرائح فقط — طوّرها)\n${JSON.stringify(draft)}\n\n${opts.direction ? `## توجيه المستخدم\n${opts.direction}\n\n` : ''}${CONTRACT_DESIGN}` },
   ];
   emit({ type: 'step', text: 'الفكرة وكتابة التصميم' });
-  const { out, route: r } = await call('design', { preset: draft.preset, post: postId, maxTokens: 24000, validate: validateSpec, messages: [{ role: 'user', content }] }, emit);
+  const { out, route: r } = await call('design', { preset: draft.preset, post: postId, maxTokens: 40000, validate: validateSpec, messages: [{ role: 'user', content }] }, emit);
   return finish(pid, post, normalize(out.spec, post, draft), { concept: out.concept, notes: [...out.notes, ...out.photo_requests.map(x => '📷 مطلوب: ' + x)], source: 'ai', label: r.model }, emit);
 }
 
@@ -233,10 +238,10 @@ export async function revisePost(pid: string, postId: string, feedback: string, 
   if (task === 'revise_major') {
     const content: Part[] = [{ type: 'text', text: postBrief(post) }, ...(await photoParts(pid, post)),
       { type: 'text', text: `## النسخة الحالية\n${JSON.stringify(base.spec)}\n\n## سجل المحادثة\n${history || '—'}\n\n## ملاحظة المستخدم (طبّقها بدقة)\n${feedback}\n\n${CONTRACT_DESIGN}` }];
-    const { out } = await call('revise_major', { preset: base.spec.preset, post: postId, maxTokens: 24000, validate: validateSpec, messages: [{ role: 'user', content }] }, emit);
+    const { out } = await call('revise_major', { preset: base.spec.preset, post: postId, maxTokens: 40000, validate: validateSpec, messages: [{ role: 'user', content }] }, emit);
     spec = normalize(out.spec, post, base.spec); summary = out.concept;
   } else {
-    const { out } = await call(task, { post: postId, maxTokens: task === 'revise_minor' ? 3000 : 8000, validate: validateOps, messages: [{ role: 'user', content:
+    const { out } = await call(task, { post: postId, maxTokens: task === 'revise_minor' ? 8000 : 14000, validate: validateOps, messages: [{ role: 'user', content:
       `## المحتوى الحرفي (مرجع)\n${post.design}\n\n## spec الحالي\n${JSON.stringify(base.spec)}\n\n## سجل المحادثة\n${history || '—'}\n\n## ملاحظة المستخدم\n${feedback}\n\n${CONTRACT_PATCH}` }] }, emit);
     spec = out.spec || applyOps(base.spec, out.ops); summary = out.summary;
   }
@@ -259,7 +264,7 @@ export async function variantsPost(pid: string, postId: string, count: number, e
     const sub: Emit = ev => emit({ ...ev, variant: i + 1 });
     const content: Part[] = [{ type: 'text', text: postBrief(post) }, ...photos,
       { type: 'text', text: `${base ? `## النسخة الحالية (لا تكررها — اعمل بديل)\n${JSON.stringify(base.spec)}\n\n` : `## مسودة آلية\n${JSON.stringify(draft)}\n\n`}## ${dir}\n\n${CONTRACT_DESIGN}` }];
-    const { out, route: r } = await call('variant', { preset: draft.preset, post: postId, maxTokens: 20000, validate: validateSpec, messages: [{ role: 'user', content }] }, sub);
+    const { out, route: r } = await call('variant', { preset: draft.preset, post: postId, maxTokens: 32000, validate: validateSpec, messages: [{ role: 'user', content }] }, sub);
     return finish(pid, findPost(getProject(pid), postId), normalize(out.spec, post, draft), { concept: out.concept, notes: out.notes, source: 'variant', label: `خيار ${i + 1} · ${r.model}` }, sub, 1);
   });
   const res = await Promise.allSettled(jobs);
@@ -269,7 +274,7 @@ export async function variantsPost(pid: string, postId: string, count: number, e
 /* ═════════ الكابشن (أرخص موديل) ═════════ */
 export async function polishCaption(pid: string, postId: string, emit: Emit) {
   const post = findPost(getProject(pid), postId);
-  const { out } = await call('caption', { post: postId, maxTokens: 2000, validate: (j: any) => ({ caption: String(j.caption || ''), hashtags: arr(j.hashtags), fixes: arr(j.fixes) }), messages: [{ role: 'user', content:
+  const { out } = await call('caption', { post: postId, maxTokens: 6000, validate: (j: any) => ({ caption: String(j.caption || ''), hashtags: arr(j.hashtags), fixes: arr(j.fixes) }), messages: [{ role: 'user', content:
     `صحّح الكابشن إملائياً فقط (همزات الوصل، على/إلى، الترقيم العربي) — بدون تغيير الصياغة أو إضافة جمل. افصل الهاشتاقات.\n` +
     `## الكابشن\n${post.caption}\n\nأرجع {"caption":"…","hashtags":["#…"],"fixes":["«قبل» ← «بعد»"]}` }] }, emit);
   return out;
