@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Plus, Sparkles, CalendarDays, Image as ImageIcon, CheckSquare, Square, Pencil, StopCircle } from 'lucide-react';
-import { api, stream, postUrl, themeOf, KINDS, STATES, fmtDate, THEMES, type Project, type Post } from '../api';
+import { api, themeOf, KINDS, STATES, fmtDate, THEMES, type Project, type Post } from '../api';
 import { go } from '../App';
 import { Spinner, useToast, Modal, Swatch, Segmented, Empty } from '../ui';
 
@@ -10,8 +10,6 @@ export default function ProjectPage({ pid }: { pid: string }) {
   const [p, setP] = useState<Project | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [batch, setBatch] = useState<{ i: number; n: number; title: string; step: string } | null>(null);
-  const [stop, setStop] = useState<AbortController | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [rename, setRename] = useState(false);
   const toast = useToast();
@@ -24,22 +22,28 @@ export default function ProjectPage({ pid }: { pid: string }) {
     for (const x of p?.posts || []) c[x.state] = (c[x.state] || 0) + 1; return c;
   }, [p]);
 
+  // التصميم الجماعي يشتغل بطابور على السيرفر — يكمل حتى لو طلعت من الصفحة؛ هنا نحدّث الحالات كل كم ثانية
+  const active = (p?.posts || []).filter(x => x.state === 'queued' || x.state === 'designing');
+  useEffect(() => {
+    if (!active.length) return;
+    const t = setInterval(load, 4000); return () => clearInterval(t);
+  }, [active.length]);   // eslint-disable-line
+  const prevActive = useRef(0);
+  useEffect(() => {
+    if (prevActive.current > 0 && active.length === 0) toast('ok', 'خلص التصميم الجماعي — راجع المنشورات واعتمدها');
+    prevActive.current = active.length;
+  }, [active.length]);   // eslint-disable-line
+
   async function runBatch() {
-    const list = (p?.posts || []).filter(x => sel.has(x.id));
-    const ac = new AbortController(); setStop(ac);
-    let ok = 0;
-    for (let i = 0; i < list.length; i++) {
-      if (ac.signal.aborted) break;
-      const post = list[i];
-      setBatch({ i: i + 1, n: list.length, title: post.title, step: 'بدء…' });
-      try {
-        await stream(postUrl(pid, post.id) + '/design', {}, ev => { if (ev.type === 'step') setBatch(b => b && { ...b, step: ev.text }); }, ac.signal);
-        ok++;
-      } catch (e: any) { if (!ac.signal.aborted) toast('err', `#${post.n}: ${e.message}`); }
-      load();
-    }
-    setBatch(null); setStop(null); setSel(new Set());
-    if (ok) toast('ok', `تم تصميم ${ok} منشور — راجعها واعتمدها`);
+    try {
+      const r = await api.post<{ queued: number }>(`/api/projects/${pid}/batch`, { postIds: [...sel] });
+      toast('ok', `انضاف ${r.queued} منشور للطابور — يشتغل على السيرفر، تقدر تطلع وترجع`);
+      setSel(new Set()); load();
+    } catch (e: any) { toast('err', e.message); }
+  }
+  async function stopBatch() {
+    const r = await api.post<{ cancelled: number }>(`/api/projects/${pid}/batch/cancel`);
+    toast('info', `أُلغي ${r.cancelled} من الطابور — الشغّال حالياً يكمل لين يخلص`); load();
   }
 
   if (!p) return <div className="h-full grid place-items-center"><Spinner className="text-gold" size={22} /></div>;
@@ -56,21 +60,20 @@ export default function ProjectPage({ pid }: { pid: string }) {
         </div>
         <div className="mr-auto flex items-center gap-2">
           <button className="btn-line" onClick={() => setNewOpen(true)}><Plus size={16} /> منشور</button>
-          <button className="btn-gold" disabled={!sel.size || !!batch} onClick={runBatch}>
+          <button className="btn-gold" disabled={!sel.size} onClick={runBatch}>
             <Sparkles size={16} /> صمّم المحدد {sel.size ? `(${sel.size})` : ''}
           </button>
         </div>
       </header>
 
-      {batch && (
+      {active.length > 0 && (
         <div className="card p-4 mb-5 flex items-center gap-4 fade-in border-gold/30">
           <Spinner className="text-gold-deep" size={20} />
           <div className="min-w-0 flex-1">
-            <div className="font-bold text-[14px] truncate">({batch.i}/{batch.n}) {batch.title}</div>
-            <div className="text-ink-soft text-[13px]">{batch.step}</div>
+            <div className="font-bold text-[14px]">يُصمَّم الآن {active.filter(x => x.state === 'designing').length} · بالطابور {active.filter(x => x.state === 'queued').length}</div>
+            <div className="text-ink-soft text-[13px] truncate">{active.filter(x => x.state === 'designing').map(x => `#${x.n} ${x.title}`).join(' · ') || 'بانتظار الدور…'}</div>
           </div>
-          <div className="w-40 h-1.5 rounded-full bg-ink/10 overflow-hidden"><div className="h-full bg-gold transition-all" style={{ width: `${((batch.i - 1) / batch.n) * 100}%` }} /></div>
-          <button className="btn-ghost btn-sm text-red-700" onClick={() => stop?.abort()}><StopCircle size={15} /> إيقاف</button>
+          {active.some(x => x.state === 'queued') && <button className="btn-ghost btn-sm text-red-700" onClick={stopBatch}><StopCircle size={15} /> إلغاء الطابور</button>}
         </div>
       )}
 
@@ -112,7 +115,7 @@ function PostCard({ pid, post, selected, onSelect }: { pid: string; post: Post; 
                 <div className="font-display font-bold text-[17px] leading-snug text-graphite/80 line-clamp-4">{post.title}</div>
               </div>
             </div>}
-        <span className={`chip absolute top-3 right-3 ${st.cls} backdrop-blur bg-opacity-90`}>{post.state === 'designing' && <span className="h-1.5 w-1.5 rounded-full bg-current pulse-dot" />}{st.label}</span>
+        <span className={`chip absolute top-3 right-3 ${st.cls} backdrop-blur bg-opacity-90`}>{(post.state === 'designing' || post.state === 'queued') && <span className="h-1.5 w-1.5 rounded-full bg-current pulse-dot" />}{st.label}</span>
         {post.versions.length > 0 && <span className="chip absolute top-3 left-3 bg-graphite/80 text-ivory">v{v?.n}{post.versions.length > 1 ? ` من ${post.versions.length}` : ''}</span>}
       </a>
       <div className="p-4 flex-1 flex flex-col">

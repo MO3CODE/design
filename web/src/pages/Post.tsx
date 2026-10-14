@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Download, Columns2, Rows3, Code2, Trash2, Maximize2, FileText, Images, Loader2, AlertTriangle, Info, CheckCircle2, Star } from 'lucide-react';
-import { api, stream, postUrl, KINDS, STATES, themeOf, fmtDate, type Post, type Version, type QcSummary } from '../api';
+import { api, stream, postUrl, KINDS, STATES, themeOf, fmtDate, type Post, type Version, type QcSummary, type JobInfo } from '../api';
 import { SlideFrame, sizeOf, useWidth } from '../engine';
 import { Spinner, useToast, Modal, Swatch, ScoreRing, Segmented } from '../ui';
 import { AIPanel, type LogEv } from '../components/AIPanel';
@@ -32,21 +32,47 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
 
   const version = post?.versions.find(v => v.id === viewId);
 
-  async function run(path: string, body: any, doneText: string) {
+  // قراءة البث تتوقف لما تطلع من الصفحة — المهمة نفسها تكمل على السيرفر
+  const readers = useRef<AbortController | null>(null);
+  useEffect(() => () => readers.current?.abort(), []);
+  const DONE_TEXT: Record<string, string> = { design: 'جاهز — راجع التصميم', revise: 'تم التعديل', variants: 'الخيارات جاهزة — قارن بينها', caption: 'تم تدقيق الكابشن', manual: 'انرسمت النسخة اليدوية' };
+
+  /** يتابع أحداث مهمة (جديدة أو شغالة من قبل) ويعرضها بالسجل */
+  async function follow(open: (onEvent: (ev: any) => void, signal: AbortSignal) => Promise<any>, doneText?: string) {
+    readers.current?.abort();
+    const ac = new AbortController(); readers.current = ac;
     setBusy(true); setLog([]);
-    const push = (e: any) => setLog(l => [...l, { ...e, at: Date.now() }]);
+    let kind = '';
+    const push = (e: any) => setLog(l => [...l, { ...e, at: e.at || Date.now() }]);
     try {
-      const r = await stream(url + path, body, ev => {
+      const r = await open(ev => {
+        if (ev.type === 'job') { kind = ev.job?.kind || ''; if (ev.job?.status === 'queued' || ev.job?.status === 'running') setBusy(true); }
+        if (ev.type === 'queued') push({ type: 'step', text: `بالطابور — قبله ${Math.max(0, (ev.position || 1) - 1)} مهمة` });
         if (['step', 'route', 'usage', 'review', 'log'].includes(ev.type)) push(ev);
         if (ev.type === 'qc') push({ type: 'qc', score: ev.score });
         if (ev.type === 'version') { setViewId(ev.version.id); load(); }
-      });
-      push({ type: 'done', text: doneText });
-      await load();
+      }, ac.signal);
+      if (!ac.signal.aborted) { push({ type: 'done', text: doneText || DONE_TEXT[kind] || 'تم' }); await load(); }
       return r;
-    } catch (e: any) { push({ type: 'error', text: e.message }); toast('err', e.message); }
-    finally { setBusy(false); }
+    } catch (e: any) {
+      if (ac.signal.aborted) return;
+      if (e?.status === 409) { toast('info', 'فيه عملية شغالة على هذا المنشور — هذي متابعتها'); return follow((on, sig) => stream(url + '/job/stream', null, on, sig)); }
+      push({ type: 'error', text: e.message }); toast('err', e.message); load();
+    } finally { if (!ac.signal.aborted) setBusy(false); }
   }
+  const run = async (path: string, body: any, doneText: string): Promise<any> => {
+    try { return await follow((on, sig) => stream(url + path, body, on, sig), doneText); }
+    catch { /* 409 يُعالَج تحت */ }
+  };
+
+  // عند فتح الصفحة: لو فيه مهمة شغالة (أو خلصت قبل شوي) — نتصل فيها ونكمل المتابعة
+  useEffect(() => {
+    api.get<{ job: JobInfo | null }>(url + '/job').then(({ job }) => {
+      if (job) follow((on, sig) => stream(url + '/job/stream', null, on, sig));
+    }).catch(() => {});
+  }, [url]);   // eslint-disable-line
+
+  const cancel = async () => { await api.post(url + '/job/cancel'); toast('info', 'جاري الإيقاف…'); };
 
   if (!post) return <div className="h-full grid place-items-center"><Spinner className="text-gold" size={22} /></div>;
   const th = themeOf(post.theme); const st = STATES[post.state];
@@ -96,7 +122,7 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
 
         {/* يسار: المصمم الذكي */}
         <aside className="w-[360px] xl:w-[390px] shrink-0 border-r border-ink/10 bg-white/50">
-          <AIPanel post={post} version={version} busy={busy} log={log} aiReady={!!health?.aiReady}
+          <AIPanel post={post} version={version} busy={busy} log={log} aiReady={!!health?.aiReady} onCancel={cancel}
             onDesign={d => run('/design', { direction: d }, 'جاهز — راجع التصميم')}
             onRevise={fb => { setPost({ ...post, chat: [...post.chat, { id: 'tmp', role: 'user', text: fb, at: '' }] }); run('/revise', { feedback: fb, versionId: viewId }, 'تم التعديل'); }}
             onVariants={n => run('/variants', { count: n }, 'الخيارات جاهزة — قارن بينها').then(r => setCompare(Array.isArray(r) && r.length >= 2 ? r.slice(0, 2).map((v: Version) => v.id) : null))}

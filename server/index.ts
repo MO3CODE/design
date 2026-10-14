@@ -15,7 +15,8 @@ import { prepareSpec, engineAssets, fontCSS, brand, presets, fontStatus } from '
 import { probe, cutoutAvailable, checkCutout } from './photos.js';
 import { exportFull, zipDir, INTERNAL_TOKEN, closeRenderer } from './render.js';
 import { lintSpec } from './lint.js';
-import { designPost, revisePost, variantsPost, polishCaption, manualVersion, type Emit } from './ai/designer.js';
+import { designPost, revisePost, variantsPost, polishCaption, manualVersion } from './ai/designer.js';
+import { startJob, getJob, isBusy, summary, subscribe, cancelJob, projectJobs, resetStaleStates, type Emit } from './jobs.js';
 import { listModels, resolveTier, usageSummary } from './ai/router.js';
 import { getSettings, saveSettings, publicSettings } from './settings.js';
 
@@ -165,35 +166,48 @@ app.post('/api/projects/:pid/posts/:postId/prepare', wrap(async (req, res) => {
 }));
 
 /* ── الذكاء الاصطناعي (بث NDJSON بالتقدم) ── */
-const running = new Set<string>();
-function streamJob(req: Request, res: Response, fn: (emit: Emit) => Promise<any>) {
-  const key = P(req) + ':' + Q(req);
-  if (running.has(key)) return res.status(409).json({ error: 'فيه عملية شغالة على هذا المنشور — انتظرها تخلص' });
-  running.add(key);
-  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-cache'); res.setHeader('X-Accel-Buffering', 'no');
-  res.flushHeaders();
-  let closed = false; res.on('close', () => { closed = true; });
-  const emit: Emit = ev => { if (!closed) res.write(JSON.stringify(ev) + '\n'); };
-  mutate(P(req), p => { findPost(p, Q(req)).state = 'designing'; })
-    .then(() => fn(emit))
-    .then(r => emit({ type: 'done', result: r }))
-    .catch(e => { console.error(e); emit({ type: 'error', message: e?.message || String(e) }); })
-    .finally(async () => {
-      running.delete(key);
-      await mutate(P(req), p => { const post = findPost(p, Q(req)); if (post.state === 'designing') post.state = post.versions.length ? 'review' : 'new'; }).catch(() => {});
-      res.end();
-    });
+function jobRoute(req: Request, res: Response, kind: string, label: string, fn: (emit: Emit) => Promise<any>) {
+  findPost(getProject(P(req)), Q(req));
+  const cur = getJob(P(req), Q(req));
+  if (isBusy(cur)) return res.status(409).json({ error: 'فيه عملية شغالة على هذا المنشور — تقدر تتابعها', job: summary(cur) });
+  subscribe(startJob(P(req), Q(req), kind, label, fn), res);
 }
-app.post('/api/projects/:pid/posts/:postId/design', (req, res) => streamJob(req, res, e => designPost(P(req), Q(req), e, { direction: req.body?.direction })));
+app.post('/api/projects/:pid/posts/:postId/design', (req, res) => jobRoute(req, res, 'design', 'تصميم', e => designPost(P(req), Q(req), e, { direction: req.body?.direction })));
 app.post('/api/projects/:pid/posts/:postId/revise', (req, res) => {
   const fb = String(req.body?.feedback || '').trim();
   if (!fb) return res.status(400).json({ error: 'اكتب الملاحظة' });
-  streamJob(req, res, e => revisePost(P(req), Q(req), fb, e, req.body?.versionId));
+  jobRoute(req, res, 'revise', 'تعديل', e => revisePost(P(req), Q(req), fb, e, req.body?.versionId));
 });
-app.post('/api/projects/:pid/posts/:postId/variants', (req, res) => streamJob(req, res, e => variantsPost(P(req), Q(req), Number(req.body?.count) || 2, e)));
-app.post('/api/projects/:pid/posts/:postId/caption', (req, res) => streamJob(req, res, e => polishCaption(P(req), Q(req), e)));
-app.post('/api/projects/:pid/posts/:postId/manual', (req, res) => streamJob(req, res, e => manualVersion(P(req), Q(req), req.body?.spec, e, req.body?.label)));
+app.post('/api/projects/:pid/posts/:postId/variants', (req, res) => jobRoute(req, res, 'variants', 'خيارات بديلة', e => variantsPost(P(req), Q(req), Number(req.body?.count) || 2, e)));
+app.post('/api/projects/:pid/posts/:postId/caption', (req, res) => jobRoute(req, res, 'caption', 'تدقيق الكابشن', e => polishCaption(P(req), Q(req), e)));
+app.post('/api/projects/:pid/posts/:postId/manual', (req, res) => jobRoute(req, res, 'manual', 'تعديل يدوي', e => manualVersion(P(req), Q(req), req.body?.spec, e, req.body?.label)));
+
+/* ── متابعة المهمة بعد الرجوع للصفحة ── */
+app.get('/api/projects/:pid/posts/:postId/job', (req, res) => res.json({ job: summary(getJob(P(req), Q(req))) || null }));
+app.get('/api/projects/:pid/posts/:postId/job/stream', (req, res) => {
+  const j = getJob(P(req), Q(req));
+  if (!j) return res.status(404).json({ error: 'ما فيه مهمة' });
+  subscribe(j, res);
+});
+app.post('/api/projects/:pid/posts/:postId/job/cancel', (req, res) => res.json({ ok: cancelJob(P(req), Q(req)) }));
+
+/* ── تصميم جماعي بطابور على السيرفر (يكمل حتى لو قفلت الصفحة) ── */
+app.post('/api/projects/:pid/batch', wrap(async (req, res) => {
+  const p = getProject(P(req));
+  const ids: string[] = Array.isArray(req.body?.postIds) ? req.body.postIds.map(String) : [];
+  let n = 0;
+  for (const id of ids) {
+    if (!p.posts.some(x => x.id === id) || isBusy(getJob(p.id, id))) continue;
+    startJob(p.id, id, 'design', 'تصميم (جماعي)', e => designPost(p.id, id, e)); n++;
+  }
+  res.json({ queued: n, jobs: projectJobs(p.id) });
+}));
+app.get('/api/projects/:pid/jobs', (req, res) => res.json(projectJobs(P(req))));
+app.post('/api/projects/:pid/batch/cancel', (req, res) => {
+  const p = getProject(P(req)); let n = 0;
+  for (const x of p.posts) if (getJob(p.id, x.id)?.status === 'queued' && cancelJob(p.id, x.id)) n++;
+  res.json({ cancelled: n });
+});
 
 /* ── النسخ ── */
 app.post('/api/projects/:pid/posts/:postId/versions/:vid/current', wrap(async (req, res) => {
@@ -287,6 +301,7 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   if (!res.headersSent) res.status(status).json({ error: err?.message || 'خطأ غير متوقع' });
 });
 
+resetStaleStates().catch(() => {});
 const server = app.listen(cfg.port, () => {
   const s = getSettings();
   console.log(`\n  استوديو بوابة المستثمر  →  http://localhost:${cfg.port}`);

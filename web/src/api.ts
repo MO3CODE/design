@@ -10,7 +10,7 @@ export interface ExportInfo { id: string; version: string; at: string; files: st
 export interface Post {
   id: string; n: number; title: string; ctype: string; platform: string; pillar: string; design: string; caption: string; notes: string;
   due: string; publish: string; status: string; link: string; service: string; theme: string; kind: 'single' | 'carousel' | 'story' | 'reel' | 'profile';
-  photos: Photo[]; versions: Version[]; current?: string; exports: ExportInfo[]; state: 'new' | 'designing' | 'review' | 'approved'; chat: ChatMsg[]; updatedAt: string;
+  photos: Photo[]; versions: Version[]; current?: string; exports: ExportInfo[]; state: 'new' | 'queued' | 'designing' | 'review' | 'approved'; chat: ChatMsg[]; updatedAt: string;
 }
 export interface Project { id: string; name: string; source?: string; createdAt: string; updatedAt: string; posts: Post[] }
 export interface ProjectRow { id: string; name: string; createdAt: string; updatedAt: string; count: number; done: number; inReview: number }
@@ -41,9 +41,11 @@ export const api = {
 
 export const postUrl = (pid: string, postId: string) => `/api/projects/${pid}/posts/${postId}`;
 
-/** طلب يبث أحداث NDJSON (تقدم التصميم) */
+/** طلب يبث أحداث NDJSON (تقدم التصميم). body = null → GET (متابعة مهمة شغالة) */
 export async function stream(url: string, body: any, onEvent: (ev: any) => void, signal?: AbortSignal): Promise<any> {
-  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}), signal, credentials: 'same-origin' });
+  const r = await fetch(url, body === null
+    ? { signal, credentials: 'same-origin' }
+    : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}), signal, credentials: 'same-origin' });
   if (!r.ok) { let m = `خطأ ${r.status}`; try { m = (await r.json()).error || m; } catch {} throw new ApiError(m, r.status); }
   const reader = r.body!.getReader(); const dec = new TextDecoder();
   let buf = '', result: any, error: string | undefined;
@@ -55,7 +57,8 @@ export async function stream(url: string, body: any, onEvent: (ev: any) => void,
       const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
       if (!line) continue;
       try {
-        const ev = JSON.parse(line); onEvent(ev);
+        const ev = JSON.parse(line); if (ev.type === 'ping') continue;
+        onEvent(ev);
         if (ev.type === 'done') result = ev.result;
         if (ev.type === 'error') error = ev.message;
       } catch {}
@@ -64,6 +67,8 @@ export async function stream(url: string, body: any, onEvent: (ev: any) => void,
   if (error) throw new ApiError(error, 500);
   return result;
 }
+
+export interface JobInfo { id: string; kind: string; label: string; status: 'queued' | 'running' | 'done' | 'error' | 'cancelled'; error?: string; position?: number; startedAt?: string }
 
 export const THEMES: { id: string; name: string; colors: string[]; group: 'svc' | 'brand' | 'other' }[] = [
   { id: 'svc_investor', name: 'خدمات المستثمرين', colors: ['#B3A47F', '#868789'], group: 'svc' },
@@ -85,6 +90,7 @@ export const themeOf = (id: string) => THEMES.find(t => t.id === id) || { id, na
 export const KINDS: Record<string, string> = { single: 'منشور مفرد', carousel: 'كاروسيل', story: 'ستوري', reel: 'غلاف ريل', profile: 'صورة تعريفية' };
 export const STATES: Record<Post['state'], { label: string; cls: string }> = {
   new: { label: 'جديد', cls: 'bg-ink/[.06] text-ink-soft' },
+  queued: { label: 'بالطابور', cls: 'bg-sun/15 text-[#7a5d00]' },
   designing: { label: 'يُصمَّم الآن', cls: 'bg-sun/20 text-[#7a5d00]' },
   review: { label: 'بانتظار الاعتماد', cls: 'bg-gold/15 text-gold-deep' },
   approved: { label: 'معتمد', cls: 'bg-emerald-600/12 text-emerald-800' },

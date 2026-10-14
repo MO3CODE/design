@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Sparkles, Send, Copy, ThumbsUp, ThumbsDown, Wand2, Cpu, CheckCircle2, AlertTriangle, Camera, Lightbulb, SpellCheck, BookmarkPlus } from 'lucide-react';
+import { Sparkles, Send, Copy, ThumbsUp, ThumbsDown, Wand2, Cpu, CheckCircle2, AlertTriangle, Camera, Lightbulb, SpellCheck, BookmarkPlus, StopCircle } from 'lucide-react';
 import { TIER_LABEL, money, type Post, type Version } from '../api';
 import { Spinner, Modal } from '../ui';
 
@@ -8,8 +8,8 @@ export interface LogEv { type: string; text?: string; tier?: string; model?: str
 
 const QUICK = ['كبّر الأصل شوي', 'صغّر العنوان', 'الشعار بالوسط فوق', 'خفّف التكستشر', 'اقلب الأصل', 'شريحة الختام داكنة', 'وسّع المسافات'];
 
-export function AIPanel({ post, version, busy, log, aiReady, onDesign, onRevise, onVariants, onVerdict, onCaption }: {
-  post: Post; version?: Version; busy: boolean; log: LogEv[]; aiReady: boolean;
+export function AIPanel({ post, version, busy, log, aiReady, onDesign, onRevise, onVariants, onVerdict, onCaption, onCancel }: {
+  post: Post; version?: Version; busy: boolean; log: LogEv[]; aiReady: boolean; onCancel: () => void;
   onDesign: (direction?: string) => void; onRevise: (fb: string) => void; onVariants: (n: number) => void;
   onVerdict: (v: 'approved' | 'rejected' | null, note: string, toTaste: boolean) => void; onCaption: () => void;
 }) {
@@ -66,9 +66,15 @@ export function AIPanel({ post, version, busy, log, aiReady, onDesign, onRevise,
         {post.chat.map(m => (
           <div key={m.id} className={`fade-in max-w-[92%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed ${m.role === 'user' ? 'bg-graphite text-ivory mr-auto rounded-bl-md' : 'bg-white border border-ink/10 rounded-br-md'}`}>{m.text}</div>
         ))}
-        {log.length > 0 && (
+        {(log.length > 0 || busy) && (
           <div className="rounded-2xl bg-white/70 border border-ink/10 p-3 space-y-1.5">
             {log.map((e, i) => <LogLine key={i} e={e} last={i === log.length - 1 && busy} />)}
+            {busy && (
+              <div className="flex items-center gap-2 pt-1.5 mt-1 border-t border-ink/[.06]">
+                <span className="text-[11.5px] text-ink-mute leading-relaxed">يشتغل على السيرفر — تقدر تطلع من الصفحة وترجع، والعمل يكمل.</span>
+                <button className="btn-ghost btn-sm text-red-700 mr-auto shrink-0" onClick={onCancel}><StopCircle size={14} /> إيقاف</button>
+              </div>
+            )}
           </div>
         )}
       </div>

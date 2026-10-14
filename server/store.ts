@@ -25,7 +25,7 @@ export interface Post {
   design: string; caption: string; notes: string; due: string; publish: string; status: string; link: string;
   service: string; theme: string; kind: 'single' | 'carousel' | 'story' | 'reel' | 'profile';
   photos: Photo[]; versions: Version[]; current?: string; exports: ExportInfo[];
-  state: 'new' | 'designing' | 'review' | 'approved'; chat: ChatMsg[]; updatedAt: string;
+  state: 'new' | 'queued' | 'designing' | 'review' | 'approved'; chat: ChatMsg[]; updatedAt: string;
 }
 export interface Project { id: string; name: string; source?: string; createdAt: string; updatedAt: string; posts: Post[] }
 
