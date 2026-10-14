@@ -330,7 +330,7 @@ export async function autoAssetsPost(pid: string, postId: string, emit: Emit, op
       ...a.value, src: p.id };
     notes.push(`🖼 شريحة ${a.slide}: ${a.kind === 'layer' ? 'طبقة خلفية' : 'عنصر'} مولّد — ${a.why || a.description}`);
   }
-  if (!notes.length) throw new Error('ما قدرت أولّد أي أصل — راجع مفتاح OpenAI بالإعدادات');
+  if (!notes.length) throw new Error('ما قدرت أولّد أي أصل — RadoxAI لسا ما فعّل توليد الصور، جرّب «اختبر رسم الصور» بالإعدادات');
   return finish(pid, findPost(getProject(pid), postId), spec, { notes, source: 'ai', label: `أصول GPT Image على v${base.n}` }, emit, 1);
 }
 

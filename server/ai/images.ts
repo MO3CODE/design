@@ -1,6 +1,6 @@
 // توليد وتعديل العناصر والصور بـ GPT Image.
-// النص (قراءة التصميم، كتابة البرومبت، ترجمة التعديلات) بموديل GPT من RadoxAI؛ رسم الصورة نفسها عبر OpenAI
-// (RadoxAI حالياً ما يدعم /images — جرّبناه: 404، والموديلات النصية ترفض modalities:image). لو أضافوه: imageProvider = radox.
+// كل شي عبر RadoxAI بنفس المفتاح: النص (قراءة التصميم، البرومبت، ترجمة التعديلات) بموديل GPT، والرسم عبر /images/generations و/images/edits.
+// ملاحظة (2026-10-14): RadoxAI لسا ما فعّل /images على الحساب (404) — الميزات جاهزة وتشتغل أول ما يفعّلونه.
 import fs from 'node:fs';
 import path from 'node:path';
 import { getSettings } from '../settings.js';
@@ -50,7 +50,7 @@ export const STYLE = `Style rules for every image (Investor Gate — premium Sau
 - photo: complete photograph with calm negative space in the upper third.
 - background: opaque atmospheric background with large calm empty areas.`;
 
-const PROMPT_SYS = `You write prompts for OpenAI GPT Image. ${STYLE}\nReturn JSON only: {"prompt":"..."}`;
+const PROMPT_SYS = `You write prompts for GPT Image. ${STYLE}\nReturn JSON only: {"prompt":"..."}`;
 
 export async function buildPrompt(r: GenReq, pid?: string, postId?: string): Promise<string> {
   try {
@@ -64,10 +64,8 @@ export async function buildPrompt(r: GenReq, pid?: string, postId?: string): Pro
 interface ImgCall { prompt: string; size: string; quality?: string; n?: number; transparent: boolean; inputs?: string[] }
 async function imageAPI(c: ImgCall, pid: string, postId: string, task: string) {
   const s = getSettings();
-  const viaRadox = s.imageProvider === 'radox';
-  const key = viaRadox ? s.radoxKey : s.openaiKey;
-  const base = (viaRadox ? s.radoxBaseUrl : s.openaiBaseUrl).replace(/\/$/, '');
-  if (!key) throw new HttpError(400, 'أضف مفتاح OpenAI من الإعدادات لرسم الصور (RadoxAI ما يدعم توليد الصور حالياً)');
+  const key = s.radoxKey, base = s.radoxBaseUrl.replace(/\/$/, '');
+  if (!key) throw new HttpError(400, 'أضف مفتاح RadoxAI من الإعدادات');
   const t0 = Date.now(); let res: Response;
   if (c.inputs?.length) {
     const fd = new FormData();
@@ -87,7 +85,7 @@ async function imageAPI(c: ImgCall, pid: string, postId: string, task: string) {
   }
   if (!res.ok) {
     let m = `${res.status}`; try { const j = await res.json(); m = j?.error?.message || m; } catch {}
-    if (viaRadox && res.status === 404) m = 'RadoxAI ما يدعم توليد الصور — غيّر «مزوّد رسم الصور» لـ OpenAI بالإعدادات';
+    if (res.status === 404) m = 'RadoxAI لسا ما فعّل توليد الصور على حسابك (/images/generations) — اطلب منهم تفعيله، وجرّب بزر «اختبر رسم الصور» بالإعدادات';
     throw new HttpError(res.status === 401 ? 401 : res.status === 400 ? 400 : 502, `GPT Image: ${m}`);
   }
   const j = await res.json(); const u = j.usage || {};
@@ -178,9 +176,8 @@ export async function generateAsset(pid: string, postId: string, a: PlannedAsset
 
 /** اختبار سريع لمزوّد الرسم: صورة صغيرة رخيصة (1024، جودة low) — يرجّع الصورة أو الخطأ الحرفي */
 export async function testImageProvider(): Promise<{ ok: boolean; provider: string; model: string; message: string; image?: string; ms: number }> {
-  const s = getSettings(); const provider = s.imageProvider === 'radox' ? 'RadoxAI' : 'OpenAI';
-  const key = s.imageProvider === 'radox' ? s.radoxKey : s.openaiKey;
-  const base = (s.imageProvider === 'radox' ? s.radoxBaseUrl : s.openaiBaseUrl).replace(/\/$/, '');
+  const s = getSettings(); const provider = 'RadoxAI';
+  const key = s.radoxKey, base = s.radoxBaseUrl.replace(/\/$/, '');
   const t0 = Date.now();
   if (!key) return { ok: false, provider, model: s.imageModel, message: `ما فيه مفتاح ${provider}`, ms: 0 };
   try {
@@ -188,7 +185,7 @@ export async function testImageProvider(): Promise<{ ok: boolean; provider: stri
       body: JSON.stringify({ model: s.imageModel, prompt: 'A single red apple on a plain white background, studio photo.', n: 1, size: '1024x1024', quality: 'low', output_format: 'jpeg' }) });
     const txt = await r.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
     if (!r.ok) return { ok: false, provider, model: s.imageModel, ms: Date.now() - t0,
-      message: `${r.status} — ${j?.error?.message || txt.slice(0, 200)}${s.imageProvider === 'radox' && r.status === 404 ? ' (RadoxAI ما عنده خدمة توليد صور)' : ''}` };
+      message: `${r.status} — ${j?.error?.message || txt.slice(0, 200)}${r.status === 404 ? ' — RadoxAI لسا ما فعّل توليد الصور على حسابك' : ''}` };
     const u = j.usage || {};
     record({ kind: 'image', task: 'image_test', tier: 'image', model: s.imageModel, usage: { input: u.input_tokens || 0, output: u.output_tokens || 0, cacheRead: 0, cacheWrite: 0, images: 1 }, ok: true, ms: Date.now() - t0 });
     const b64 = j.data?.[0]?.b64_json;

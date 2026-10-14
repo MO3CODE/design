@@ -155,7 +155,7 @@ function PriceTable({ onSaved }: { onSaved: () => void }) {
     <div className="card p-5">
       <div className="flex flex-wrap items-center gap-3 mb-1">
         <h3 className="font-bold">أسعار الموديلات</h3>
-        <span className="text-[12px] text-ink-mute">دولار لكل مليون توكن — انسخها من صفحة أسعار RadoxAI و OpenAI</span>
+        <span className="text-[12px] text-ink-mute">دولار لكل مليون توكن — انسخها من صفحة أسعار RadoxAI</span>
         <input className="input !w-48 !py-1.5 text-[13px] mr-auto" dir="ltr" placeholder="بحث…" value={filter} onChange={e => setFilter(e.target.value)} />
         <button className="btn-primary btn-sm" disabled={!Object.keys(edit).length} onClick={save}><Save size={14} /> حفظ</button>
       </div>

@@ -63,7 +63,7 @@ app.get('/api/health', wrap(async (_req, res) => {
   const s = getSettings(); await Promise.race([checkCutout(), new Promise(r => setTimeout(r, 1500))]);
   res.json({
     provider: s.provider, aiReady: s.provider === 'anthropic' ? !!s.anthropicKey : !!s.radoxKey,
-    cutout: cutoutAvailable(), fonts: fontStatus(), exportScale: cfg.exportScale, imageReady: !!s.openaiKey,
+    cutout: cutoutAvailable(), fonts: fontStatus(), exportScale: cfg.exportScale
   });
 }));
 
@@ -294,7 +294,7 @@ app.get('/api/projects/:pid/posts/:postId/exports/:eid/zip', wrap(async (req, re
 app.get('/api/settings', (_req, res) => res.json(publicSettings()));
 app.put('/api/settings', wrap(async (req, res) => {
   const b = req.body || {}; const allowed: any = {};
-  for (const k of ['provider', 'radoxKey', 'radoxBaseUrl', 'anthropicKey', 'models', 'routing', 'reviewRounds', 'autoFix', 'monthlyBudget', 'prices', 'openaiKey', 'openaiBaseUrl', 'imageModel', 'imageQuality', 'imageProvider', 'assetModel']) if (b[k] !== undefined) allowed[k] = b[k];
+  for (const k of ['provider', 'radoxKey', 'radoxBaseUrl', 'anthropicKey', 'models', 'routing', 'reviewRounds', 'autoFix', 'monthlyBudget', 'prices', 'imageModel', 'imageQuality', 'assetModel']) if (b[k] !== undefined) allowed[k] = b[k];
   saveSettings(allowed);
   if (allowed.prices) pricesChanged();
   res.json(publicSettings());

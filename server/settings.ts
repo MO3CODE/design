@@ -16,10 +16,8 @@ export interface Settings {
   monthlyBudget: number;  // تنبيه لو تعدّت التكلفة الشهرية (دولار) — 0 = بدون
   /** أسعار لكل موديل (دولار لكل مليون توكن) — RadoxAI ما ينشر أسعار بالـ API، فتُدخل هنا */
   prices: Record<string, { in?: number; out?: number; cached?: number }>;
-  /** توليد الصور والعناصر — GPT Image عبر OpenAI مباشرة */
-  openaiKey: string; openaiBaseUrl: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto';
-  /** من يرسم الصور: openai (الافتراضي) أو radox لو صار يدعم /images */
-  imageProvider: 'openai' | 'radox';
+  /** توليد الصور والعناصر — GPT Image عبر RadoxAI (نفس المفتاح) */
+  imageModel: string; imageQuality: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto';
   /** موديل قراءة التصميم وكتابة برومبتات الصور (فاضي = GPT من RadoxAI تلقائياً) */
   assetModel: string;
 }
@@ -36,11 +34,8 @@ const defaults = (): Settings => ({
   autoFix: process.env.AI_AUTOFIX !== '0',
   monthlyBudget: Number(process.env.AI_MONTHLY_BUDGET || 0),
   prices: {},
-  openaiKey: process.env.OPENAI_API_KEY || '',
-  openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
   imageModel: process.env.IMAGE_MODEL || 'gpt-image-2.5-flare',
   imageQuality: (process.env.IMAGE_QUALITY as Settings['imageQuality']) || 'high',
-  imageProvider: (process.env.IMAGE_PROVIDER as Settings['imageProvider']) || 'openai',
   assetModel: process.env.ASSET_MODEL || '',
 });
 
@@ -54,7 +49,7 @@ export function getSettings(): Settings {
   cache = { ...d, ...saved, models: { ...d.models, ...(saved.models || {}) } } as Settings;
   if (!cache.radoxKey) cache.radoxKey = d.radoxKey;
   if (!cache.anthropicKey) cache.anthropicKey = d.anthropicKey;
-  if (!cache.openaiKey) cache.openaiKey = d.openaiKey;
+  for (const k of ['openaiKey', 'openaiBaseUrl', 'imageProvider']) delete (cache as any)[k];   // خيار OpenAI انحذف
   return cache;
 }
 
@@ -62,7 +57,8 @@ export function saveSettings(patch: Partial<Settings>) {
   const cur = getSettings();
   const next: Settings = { ...cur, ...patch, models: { ...cur.models, ...(patch.models || {}) } };
   // المفتاح المقنّع من الواجهة ما يكتب فوق الحقيقي
-  for (const k of ['radoxKey', 'anthropicKey', 'openaiKey'] as const) if (patch[k] && /^•+/.test(patch[k]!)) next[k] = cur[k];
+  for (const k of ['radoxKey', 'anthropicKey'] as const) if (patch[k] && /^•+/.test(patch[k]!)) next[k] = cur[k];
+  for (const k of ['openaiKey', 'openaiBaseUrl', 'imageProvider']) delete (next as any)[k];
   fs.writeFileSync(F, JSON.stringify(next, null, 1));
   cache = next;
   return next;
@@ -71,5 +67,5 @@ export function saveSettings(patch: Partial<Settings>) {
 const mask = (k: string) => (k ? '••••••••' + k.slice(-4) : '');
 export function publicSettings() {
   const s = getSettings();
-  return { ...s, radoxKey: mask(s.radoxKey), anthropicKey: mask(s.anthropicKey), openaiKey: mask(s.openaiKey) };
+  return { ...s, radoxKey: mask(s.radoxKey), anthropicKey: mask(s.anthropicKey) };
 }

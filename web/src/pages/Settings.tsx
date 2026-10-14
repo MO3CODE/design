@@ -7,7 +7,7 @@ interface Settings {
   provider: 'radox' | 'anthropic'; radoxKey: string; radoxBaseUrl: string; anthropicKey: string;
   models: Record<'pro' | 'balanced' | 'fast' | 'vision', string>; routing: 'smart' | 'quality' | 'economy';
   reviewRounds: number; autoFix: boolean; monthlyBudget: number;
-  openaiKey: string; openaiBaseUrl: string; imageModel: string; imageQuality: string; imageProvider: 'openai' | 'radox'; assetModel: string;
+  imageModel: string; imageQuality: string; assetModel: string;
 }
 interface Model { id: string; name?: string; vision: boolean; reasoning: boolean; context?: number; inPer1k?: number; outPer1k?: number }
 
@@ -23,8 +23,8 @@ function ImageTest() {
   return (
     <div className="mt-4 pt-4 border-t border-ink/[.07] flex flex-wrap items-start gap-4">
       <button className="btn-line" disabled={busy} onClick={async () => { setBusy(true); setR(null); try { setR(await api.post('/api/images/test')); } finally { setBusy(false); } }}>
-        {busy ? <Spinner /> : <Wand2 size={15} />} اختبر رسم الصور</button>
-      <span className="text-[12px] text-ink-mute flex-1 min-w-[220px]">احفظ الإعدادات أولاً. يرسم صورة صغيرة رخيصة (1024، جودة low) بالمزوّد المختار ويعرض النتيجة أو الخطأ كما هو.</span>
+        {busy ? <Spinner /> : <Wand2 size={15} />} اختبر رسم الصور عبر RadoxAI</button>
+      <span className="text-[12px] text-ink-mute flex-1 min-w-[220px]">احفظ الإعدادات أولاً. يرسم صورة صغيرة رخيصة (1024، جودة low) ويعرض النتيجة أو الخطأ كما هو.</span>
       {r && (
         <div className={`w-full rounded-xl p-3 text-[13px] flex items-start gap-3 ${r.ok ? 'bg-emerald-600/10 text-emerald-900' : 'bg-red-50 text-red-800'}`}>
           {r.image && <img src={r.image} className="h-24 w-24 rounded-lg object-cover" alt="" />}
@@ -62,7 +62,7 @@ export default function SettingsPage({ health }: { health: any }) {
 
       <section className="card p-6">
         <h2 className="font-bold text-[16px] flex items-center gap-2 mb-4"><KeyRound size={18} className="text-gold-deep" /> مزوّد الذكاء الاصطناعي</h2>
-        <Segmented value={s.provider} onChange={v => set({ provider: v })} options={[{ v: 'radox', label: 'RadoxAI (متوافق مع OpenAI)' }, { v: 'anthropic', label: 'Anthropic مباشرة' }]} />
+        <Segmented value={s.provider} onChange={v => set({ provider: v })} options={[{ v: 'radox', label: 'RadoxAI' }, { v: 'anthropic', label: 'Anthropic مباشرة' }]} />
         {s.provider === 'radox' ? (
           <div className="grid md:grid-cols-2 gap-4 mt-5">
             <div><label className="label">مفتاح RadoxAI</label><input className="input" dir="ltr" value={s.radoxKey} onChange={e => set({ radoxKey: e.target.value })} placeholder="cc_..." /></div>
@@ -109,7 +109,7 @@ export default function SettingsPage({ health }: { health: any }) {
 
       <section className="card p-6">
         <h2 className="font-bold text-[16px] flex items-center gap-2 mb-1"><Wand2 size={18} className="text-gold-deep" /> توليد العناصر والصور — GPT Image</h2>
-        <p className="text-[13px] text-ink-soft mb-4 leading-relaxed">RadoxAI ما يدعم توليد الصور، فالتوليد يتم عبر OpenAI مباشرة بمفتاح مستقل. الوصف يُكتب بالعربي ويتحول لبرومبت احترافي بأسلوب الهوية (بدون نصوص أو شعارات داخل الصورة)، والنتيجة تنضاف لصور المنشور.</p>
+        <p className="text-[13px] text-ink-soft mb-4 leading-relaxed">كل شي عبر RadoxAI بنفس المفتاح: موديل GPT يقرأ التصميم ويكتب البرومبت، والرسم بموديل الصور. الوصف يُكتب بالعربي ويتحول لبرومبت احترافي بأسلوب الهوية (بدون نصوص أو شعارات داخل الصورة). ⚠ حالياً RadoxAI ما فعّل توليد الصور على حسابك — جرّب بالزر تحت بعد ما يفعّلونه.</p>
         <div className="grid md:grid-cols-2 gap-4 mb-4 pb-4 border-b border-ink/[.07]">
           <div><label className="label">قراءة التصميم وكتابة البرومبتات (RadoxAI)</label>
             <select className="input text-[13.5px]" dir="ltr" value={s.assetModel} onChange={e => set({ assetModel: e.target.value })}>
@@ -117,13 +117,8 @@ export default function SettingsPage({ health }: { health: any }) {
               {(models?.list || []).filter(m => m.vision).map(m => <option key={m.id} value={m.id}>{m.id}</option>)}
             </select>
             <p className="text-[12px] text-ink-mute mt-1.5">يقرأ التصميم ويقرر الأصل ويترجم تعديلاتك — الافتراضي GPT من RadoxAI</p></div>
-          <div><label className="label">مزوّد رسم الصور</label>
-            <Segmented value={s.imageProvider} onChange={v => set({ imageProvider: v })} options={[{ v: 'openai', label: 'OpenAI' }, { v: 'radox', label: 'RadoxAI' }]} />
-            <p className="text-[12px] text-ink-mute mt-1.5">{s.imageProvider === 'radox' ? 'يستخدم مفتاح RadoxAI — حالياً RadoxAI ما يدعم /images (جرّبناه)، فاستخدمه فقط لو أضافوه' : 'رسم الصورة نفسها عبر OpenAI بمفتاح مستقل (تحت)'}</p></div>
         </div>
         <div className="grid md:grid-cols-2 gap-4">
-          <div><label className="label">مفتاح OpenAI</label><input className="input" dir="ltr" value={s.openaiKey} onChange={e => set({ openaiKey: e.target.value })} placeholder="sk-..." /></div>
-          <div><label className="label">Base URL</label><input className="input" dir="ltr" value={s.openaiBaseUrl} onChange={e => set({ openaiBaseUrl: e.target.value })} /></div>
           <div><label className="label">الموديل</label>
             <input className="input" dir="ltr" list="img-models" value={s.imageModel} onChange={e => set({ imageModel: e.target.value })} />
             <datalist id="img-models"><option value="gpt-image-2.5-flare" /><option value="gpt-image-2.5-sunburst" /><option value="gpt-image-2" /></datalist>
@@ -153,7 +148,6 @@ export default function SettingsPage({ health }: { health: any }) {
           <h2 className="font-bold text-[16px] mb-4">حالة السيرفر</h2>
           <div className="grid sm:grid-cols-2 gap-3 text-[13.5px]">
             <Status ok={health.aiReady} label="مفتاح الذكاء الاصطناعي" />
-            <Status ok={!!health.imageReady} label="توليد الصور (OpenAI)" />
             <Status ok={health.cutout} label="قص الخلفية التلقائي (Python + rembg)" icon={<Scissors size={14} />} />
             {Object.entries<boolean>(health.fonts || {}).map(([k, v]) => <Status key={k} ok={v} label={`خط ${({ expo: 'Expo Arabic', bahij: 'Bahij', thsans: 'ثمانية سانس', thserif: 'ثمانية سيرف', plex: 'IBM Plex', cairo: 'Cairo' } as any)[k] || k}`} icon={<Type size={14} />} hint={!v ? 'ضع ملفات الخط بـ engine/assets/fonts' : undefined} />)}
           </div>
