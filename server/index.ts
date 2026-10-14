@@ -17,7 +17,9 @@ import { exportFull, zipDir, INTERNAL_TOKEN, closeRenderer } from './render.js';
 import { lintSpec } from './lint.js';
 import { designPost, revisePost, variantsPost, polishCaption, manualVersion } from './ai/designer.js';
 import { startJob, getJob, isBusy, summary, subscribe, cancelJob, projectJobs, resetStaleStates, type Emit } from './jobs.js';
-import { listModels, resolveTier, usageSummary } from './ai/router.js';
+import { listModels, resolveTier } from './ai/router.js';
+import { generate as generateImage } from './ai/images.js';
+import { summary as usageSummary, live as usageLive, pricesChanged, priceOf } from './usage.js';
 import { getSettings, saveSettings, publicSettings } from './settings.js';
 
 const app = express();
@@ -61,7 +63,7 @@ app.get('/api/health', wrap(async (_req, res) => {
   const s = getSettings(); await Promise.race([checkCutout(), new Promise(r => setTimeout(r, 1500))]);
   res.json({
     provider: s.provider, aiReady: s.provider === 'anthropic' ? !!s.anthropicKey : !!s.radoxKey,
-    cutout: cutoutAvailable(), fonts: fontStatus(), exportScale: cfg.exportScale,
+    cutout: cutoutAvailable(), fonts: fontStatus(), exportScale: cfg.exportScale, imageReady: !!s.openaiKey,
   });
 }));
 
@@ -154,6 +156,16 @@ app.delete('/api/projects/:pid/posts/:postId/photos/:photoId', wrap(async (req, 
     if (ph) fs.rmSync(path.join(postDir(p.id, post.id), 'photos', ph.file), { force: true });
     post.photos = post.photos.filter(x => x.id !== req.params.photoId); return post;
   }));
+}));
+
+/* ── توليد عناصر وصور بـ GPT Image (طلب طويل — لو طلعت من الصفحة الصورة تنحفظ للمنشور برضو) ── */
+app.post('/api/projects/:pid/posts/:postId/generate', wrap(async (req, res) => {
+  const b = req.body || {};
+  if (!String(b.description || b.prompt || '').trim()) throw new HttpError(400, 'اكتب وصف العنصر أو الصورة');
+  req.setTimeout(10 * 60e3);
+  const r = await generateImage(P(req), Q(req), { description: String(b.description || ''), kind: ['element', 'photo', 'background'].includes(b.kind) ? b.kind : 'element',
+    aspect: b.aspect, quality: b.quality, n: b.n, refs: Array.isArray(b.refs) ? b.refs.map(String) : [], prompt: b.prompt });
+  res.json({ ...r, post: findPost(getProject(P(req)), Q(req)) });
 }));
 
 /* ── تجهيز للمعاينة الحية (المتصفح يرسم بنفس المحرك) ── */
@@ -274,8 +286,9 @@ app.get('/api/projects/:pid/posts/:postId/exports/:eid/zip', wrap(async (req, re
 app.get('/api/settings', (_req, res) => res.json(publicSettings()));
 app.put('/api/settings', wrap(async (req, res) => {
   const b = req.body || {}; const allowed: any = {};
-  for (const k of ['provider', 'radoxKey', 'radoxBaseUrl', 'anthropicKey', 'models', 'routing', 'reviewRounds', 'autoFix', 'monthlyBudget']) if (b[k] !== undefined) allowed[k] = b[k];
+  for (const k of ['provider', 'radoxKey', 'radoxBaseUrl', 'anthropicKey', 'models', 'routing', 'reviewRounds', 'autoFix', 'monthlyBudget', 'prices', 'openaiKey', 'openaiBaseUrl', 'imageModel', 'imageQuality']) if (b[k] !== undefined) allowed[k] = b[k];
   saveSettings(allowed);
+  if (allowed.prices) pricesChanged();
   res.json(publicSettings());
 }));
 app.get('/api/models', wrap(async (req, res) => {
@@ -284,7 +297,14 @@ app.get('/api/models', wrap(async (req, res) => {
   for (const t of ['pro', 'balanced', 'fast', 'vision'] as const) tiers[t] = await resolveTier(t).catch(() => '');
   res.json({ list, error, tiers });
 }));
-app.get('/api/usage', (_req, res) => res.json({ ...usageSummary(), budget: getSettings().monthlyBudget }));
+app.get('/api/usage', (req, res) => res.json(usageSummary({ project: req.query.project ? String(req.query.project) : undefined, post: req.query.post ? String(req.query.post) : undefined })));
+app.get('/api/usage/live', (_req, res) => usageLive(res));
+app.get('/api/prices', wrap(async (_req, res) => {
+  const { list } = await listModels();
+  const s = getSettings();
+  const ids = [...new Set([...list.map(m => m.id), ...Object.keys(s.prices || {}), s.imageModel])];
+  res.json(ids.map(id => ({ id, ...(s.prices?.[id] || {}), effective: priceOf(id) })));
+}));
 app.get('/api/taste', (_req, res) => res.json({ md: getTaste() }));
 app.put('/api/taste', (req, res) => { setTaste(String(req.body?.md || '')); res.json({ ok: true }); });
 

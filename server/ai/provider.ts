@@ -9,7 +9,7 @@ export interface ChatReq {
   model: string; system: string[]; messages: Msg[]; maxTokens?: number; json?: boolean;
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'; onDelta?: (chars: number) => void; signal?: AbortSignal;
 }
-export interface ChatRes { text: string; model: string; usage: { input: number; output: number; cacheRead: number; cacheWrite: number }; finish?: string }
+export interface ChatRes { text: string; model: string; usage: { input: number; output: number; cacheRead: number; cacheWrite: number; reasoning?: number }; finish?: string }
 
 export class AIError extends Error { constructor(msg: string, public status = 500, public retryable = false) { super(msg); } }
 
@@ -70,8 +70,8 @@ async function radoxChat(req: ChatReq): Promise<ChatRes> {
       if (j.usage) usage = j.usage; if (j.model) model = j.model;
     }
   }
-  return { text, model, finish, usage: { input: usage?.prompt_tokens || 0, output: usage?.completion_tokens || 0,
-    cacheRead: usage?.prompt_tokens_details?.cached_tokens || 0, cacheWrite: 0 } };
+  return { text, model: req.model, finish, usage: { input: usage?.prompt_tokens || 0, output: usage?.completion_tokens || 0,
+    cacheRead: usage?.prompt_tokens_details?.cached_tokens || 0, cacheWrite: 0, reasoning: usage?.completion_tokens_details?.reasoning_tokens || 0 } };
 }
 
 /* ── Anthropic مباشرة: التعليمات الثابتة بكاش (أرخص بكثير بالتكرار) ── */

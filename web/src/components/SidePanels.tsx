@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { UploadCloud, Trash2, AlertTriangle, Scissors, Layers } from 'lucide-react';
+import { UploadCloud, Trash2, AlertTriangle, Scissors, Layers, Wand2 } from 'lucide-react';
 import { api, postUrl, THEMES, KINDS, type Post } from '../api';
 import { Spinner, useToast, Swatch } from '../ui';
 
@@ -68,7 +68,7 @@ export function ContentPanel({ pid, post, onChange }: { pid: string; post: Post;
   );
 }
 
-export function PhotosPanel({ pid, post, onChange, cutout }: { pid: string; post: Post; onChange: (p: Post) => void; cutout?: boolean }) {
+export function PhotosPanel({ pid, post, onChange, cutout, onGenerate }: { pid: string; post: Post; onChange: (p: Post) => void; cutout?: boolean; onGenerate: () => void }) {
   const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false); const [drag, setDrag] = useState(false);
@@ -89,9 +89,10 @@ export function PhotosPanel({ pid, post, onChange, cutout }: { pid: string; post
         className={`cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition ${drag ? 'border-gold bg-gold/5' : 'border-ink/15 hover:border-gold/60 bg-white/50'}`}>
         {busy ? <Spinner className="mx-auto text-gold" size={22} /> : <UploadCloud className="mx-auto text-gold-deep" size={26} strokeWidth={1.6} />}
         <div className="font-semibold text-[14px] mt-2">ارفع الأصول والصور</div>
-        <div className="text-[12px] text-ink-mute mt-1 leading-relaxed">PNG مقصوص (شفاف) للأصول · صور حقيقية بأعلى دقة<br />بدون صور مولّدة — العميل يكره شكل الذكاء الاصطناعي</div>
+        <div className="text-[12px] text-ink-mute mt-1 leading-relaxed">PNG مقصوص (شفاف) للأصول · صور حقيقية بأعلى دقة<br />أو ولّد العنصر بـ GPT Image من الزر تحت</div>
         <input ref={input} type="file" multiple accept="image/*" hidden onChange={e => upload(e.target.files)} />
       </div>
+      <button className="btn-line w-full" onClick={onGenerate}><Wand2 size={15} className="text-gold-deep" /> ولّد عنصر أو صورة بـ GPT Image</button>
       {!cutout && <div className="flex gap-2 text-[12px] text-ink-soft bg-ivory-2 rounded-xl p-3 leading-relaxed"><Scissors size={14} className="shrink-0 mt-0.5" />قص الخلفية التلقائي غير مفعّل على السيرفر — ارفع الأشخاص/الأصول PNG مقصوصة.</div>}
       <div className="grid grid-cols-2 gap-2.5">
         {post.photos.map(ph => (
@@ -99,6 +100,7 @@ export function PhotosPanel({ pid, post, onChange, cutout }: { pid: string; post
             <div className={`relative aspect-square ${ph.alpha ? 'checker' : 'bg-ivory-2'}`}>
               <img src={src(ph.file)} alt="" className={`w-full h-full ${ph.alpha ? 'object-contain p-2' : 'object-cover'}`} loading="lazy" />
               <span className={`chip absolute top-1.5 right-1.5 ${ph.alpha ? 'bg-emerald-700/85 text-white' : 'bg-graphite/75 text-ivory'}`}>{ph.alpha ? <><Layers size={11} />مقصوص</> : 'صورة'}</span>
+              {ph.source === 'gpt-image' && <span className="chip absolute top-1.5 left-9 bg-gold text-white" title={ph.prompt}><Wand2 size={11} />مولّد</span>}
               {Math.max(ph.w, ph.h) < 1600 && <span className="chip absolute bottom-1.5 right-1.5 bg-sun text-graphite" title="دقة منخفضة"><AlertTriangle size={11} />{ph.w}px</span>}
               <button className="absolute top-1.5 left-1.5 h-7 w-7 rounded-lg bg-white/90 text-red-700 grid place-items-center opacity-0 group-hover:opacity-100 transition"
                 onClick={async () => { if (!confirm('حذف الصورة؟')) return; onChange(await api.del<Post>(`${postUrl(pid, post.id)}/photos/${ph.id}`)); }}><Trash2 size={14} /></button>

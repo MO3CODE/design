@@ -5,6 +5,8 @@ import { SlideFrame, sizeOf, useWidth } from '../engine';
 import { Spinner, useToast, Modal, Swatch, ScoreRing, Segmented } from '../ui';
 import { AIPanel, type LogEv } from '../components/AIPanel';
 import { ContentPanel, PhotosPanel } from '../components/SidePanels';
+import { ImageGen } from '../components/ImageGen';
+import { useLiveUsage, fmtTok, fmtCost, type Agg } from '../usage';
 
 interface Prepared { spec: any; warnings: string[]; lint: { level: string; slide: number; msg: string }[] }
 
@@ -19,6 +21,12 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
   const [json, setJson] = useState(false);
   const [exp, setExp] = useState(false);
   const [cap, setCap] = useState<null | { caption: string; hashtags: string[]; fixes: string[] }>(null);
+  const [gen, setGen] = useState<{ open: boolean; prefill?: string }>({ open: false });
+  // صرف هذا المنشور — يتحدث مباشرة
+  const [spent, setSpent] = useState<Agg | null>(null);
+  const loadSpent = () => api.get<any>(`/api/usage?post=${postId}`).then(u => setSpent(u.all)).catch(() => {});
+  useEffect(() => { loadSpent(); }, [postId]);   // eslint-disable-line
+  useLiveUsage(ev => { if (ev.type === 'row' && (ev.data.post === postId || ev.data.task === '__prices')) loadSpent(); });
   const url = postUrl(pid, postId);
 
   const load = useCallback(async () => {
@@ -91,6 +99,12 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
         </div>
         <span className={`chip ${st.cls} hidden md:inline-flex`}>{st.label}</span>
         <div className="mr-auto flex items-center gap-2">
+          {spent && spent.calls > 0 && (
+            <a href="#/usage" className="hidden md:flex flex-col items-end leading-tight px-2" title={`دخل ${fmtTok(spent.input)} · طلع ${fmtTok(spent.output)} · تفكير ${fmtTok(spent.reasoning)} · ${spent.images} صورة`}>
+              <span className="text-[11px] text-ink-mute">صرف المنشور</span>
+              <span className="text-[13px] font-bold"><span dir="ltr">{fmtTok(spent.tokens)}</span> · <span className="text-gold-deep">{fmtCost(spent)}</span></span>
+            </a>
+          )}
           {version && <button className="btn-ghost btn-sm hidden md:inline-flex" onClick={() => setJson(true)}><Code2 size={15} /> JSON</button>}
           <button className="btn-primary" disabled={!version || busy} onClick={() => setExp(true)}><Download size={16} /> إخراج نهائي {health?.exportScale || 3}×</button>
         </div>
@@ -104,7 +118,7 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
               { v: 'photos', label: <><Images size={14} className="inline -mt-0.5 ml-1" />الصور ({post.photos.length})</> }]} />
           </div>
           <div className="flex-1 overflow-auto p-4">
-            {tab === 'content' ? <ContentPanel pid={pid} post={post} onChange={setPost} /> : <PhotosPanel pid={pid} post={post} onChange={setPost} cutout={health?.cutout} />}
+            {tab === 'content' ? <ContentPanel pid={pid} post={post} onChange={setPost} /> : <PhotosPanel pid={pid} post={post} onChange={setPost} cutout={health?.cutout} onGenerate={() => setGen({ open: true })} />}
           </div>
         </aside>
 
@@ -122,7 +136,7 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
 
         {/* يسار: المصمم الذكي */}
         <aside className="w-[360px] xl:w-[390px] shrink-0 border-r border-ink/10 bg-white/50">
-          <AIPanel post={post} version={version} busy={busy} log={log} aiReady={!!health?.aiReady} onCancel={cancel}
+          <AIPanel post={post} version={version} busy={busy} log={log} aiReady={!!health?.aiReady} onCancel={cancel} onGenerate={d => { setTab('photos'); setGen({ open: true, prefill: d }); }}
             onDesign={d => run('/design', { direction: d }, 'جاهز — راجع التصميم')}
             onRevise={fb => { setPost({ ...post, chat: [...post.chat, { id: 'tmp', role: 'user', text: fb, at: '' }] }); run('/revise', { feedback: fb, versionId: viewId }, 'تم التعديل'); }}
             onVariants={n => run('/variants', { count: n }, 'الخيارات جاهزة — قارن بينها').then(r => setCompare(Array.isArray(r) && r.length >= 2 ? r.slice(0, 2).map((v: Version) => v.id) : null))}
@@ -138,6 +152,7 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
       {version && <ExportModal open={exp} onClose={() => setExp(false)} pid={pid} post={post} version={version} />}
       {version && <JsonEditor open={json} onClose={() => setJson(false)} pid={pid} post={post} version={version}
         onSave={(spec, label) => { setJson(false); run('/manual', { spec, label }, 'انرسمت النسخة اليدوية'); }} />}
+      <ImageGen open={gen.open} prefill={gen.prefill} onClose={() => setGen({ open: false })} pid={pid} post={post} onDone={p => setPost(p)} />
       <Modal open={!!cap} onClose={() => setCap(null)} title="تدقيق الكابشن" wide
         footer={<><button className="btn-ghost" onClick={() => setCap(null)}>إغلاق</button>
           <button className="btn-primary" disabled={!version} onClick={async () => { setPost(await api.patch<Post>(`${url}/versions/${version!.id}`, { caption: cap!.caption, hashtags: cap!.hashtags })); setCap(null); toast('ok', 'تم تحديث الكابشن بالنسخة'); }}>اعتمد التصحيح</button></>}>

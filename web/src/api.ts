@@ -1,5 +1,5 @@
 // عميل الـ API + أنواع البيانات
-export interface Photo { id: string; name: string; file: string; w: number; h: number; aspect: number; alpha: boolean; bytes: number; note?: string }
+export interface Photo { id: string; name: string; file: string; w: number; h: number; aspect: number; alpha: boolean; bytes: number; note?: string; source?: 'upload' | 'gpt-image'; prompt?: string }
 export interface QcSummary { score: number; errors: string[]; warnings: string[]; lint: string[] }
 export interface Version {
   id: string; n: number; createdAt: string; source: 'ai' | 'manual' | 'draft' | 'variant'; label?: string; concept?: string;

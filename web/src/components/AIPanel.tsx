@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Sparkles, Send, Copy, ThumbsUp, ThumbsDown, Wand2, Cpu, CheckCircle2, AlertTriangle, Camera, Lightbulb, SpellCheck, BookmarkPlus, StopCircle } from 'lucide-react';
+import { Sparkles, Send, Copy, ThumbsUp, ThumbsDown, Wand2, Cpu, CheckCircle2, AlertTriangle, Camera, Lightbulb, SpellCheck, BookmarkPlus, StopCircle, Activity } from 'lucide-react';
 import { TIER_LABEL, money, type Post, type Version } from '../api';
+import { fmtTok } from '../usage';
 import { Spinner, Modal } from '../ui';
 
 export interface LogEv { type: string; text?: string; tier?: string; model?: string; reason?: string; task?: string; cost?: number; input?: number; output?: number;
@@ -8,8 +9,8 @@ export interface LogEv { type: string; text?: string; tier?: string; model?: str
 
 const QUICK = ['كبّر الأصل شوي', 'صغّر العنوان', 'الشعار بالوسط فوق', 'خفّف التكستشر', 'اقلب الأصل', 'شريحة الختام داكنة', 'وسّع المسافات'];
 
-export function AIPanel({ post, version, busy, log, aiReady, onDesign, onRevise, onVariants, onVerdict, onCaption, onCancel }: {
-  post: Post; version?: Version; busy: boolean; log: LogEv[]; aiReady: boolean; onCancel: () => void;
+export function AIPanel({ post, version, busy, log, aiReady, onDesign, onRevise, onVariants, onVerdict, onCaption, onCancel, onGenerate }: {
+  post: Post; version?: Version; busy: boolean; log: LogEv[]; aiReady: boolean; onCancel: () => void; onGenerate: (desc: string) => void;
   onDesign: (direction?: string) => void; onRevise: (fb: string) => void; onVariants: (n: number) => void;
   onVerdict: (v: 'approved' | 'rejected' | null, note: string, toTaste: boolean) => void; onCaption: () => void;
 }) {
@@ -37,7 +38,8 @@ export function AIPanel({ post, version, busy, log, aiReady, onDesign, onRevise,
             <ul className="space-y-1.5">
               {version.notes.map((n, i) => (
                 <li key={i} className={`text-[12.5px] leading-relaxed flex gap-2 ${n.startsWith('📷') ? 'text-[#7a5d00] bg-sun/10 rounded-lg px-2 py-1' : 'text-ink-soft'}`}>
-                  {n.startsWith('📷') ? <Camera size={13} className="shrink-0 mt-0.5" /> : <span className="h-1 w-1 rounded-full bg-gold mt-2 shrink-0" />}<span>{n.replace(/^📷\s*/, '')}</span>
+                  {n.startsWith('📷') ? <Camera size={13} className="shrink-0 mt-0.5" /> : <span className="h-1 w-1 rounded-full bg-gold mt-2 shrink-0" />}<span className="flex-1">{n.replace(/^📷\s*/, '')}</span>
+                  {n.startsWith('📷') && <button className="shrink-0 chip bg-gold text-white h-6 hover:bg-gold-deep" onClick={() => onGenerate(n.replace(/^📷\s*(مطلوب:)?\s*/, ''))}><Wand2 size={11} /> ولّد</button>}
                 </li>
               ))}
             </ul>
@@ -69,6 +71,7 @@ export function AIPanel({ post, version, busy, log, aiReady, onDesign, onRevise,
         {(log.length > 0 || busy) && (
           <div className="rounded-2xl bg-white/70 border border-ink/10 p-3 space-y-1.5">
             {log.map((e, i) => <LogLine key={i} e={e} last={i === log.length - 1 && busy} />)}
+            <JobMeter log={log} />
             {busy && (
               <div className="flex items-center gap-2 pt-1.5 mt-1 border-t border-ink/[.06]">
                 <span className="text-[11.5px] text-ink-mute leading-relaxed">يشتغل على السيرفر — تقدر تطلع من الصفحة وترجع، والعمل يكمل.</span>
@@ -101,6 +104,21 @@ export function AIPanel({ post, version, busy, log, aiReady, onDesign, onRevise,
       )}
 
       <VerdictModal kind={verdict} onClose={() => setVerdict(null)} onSubmit={(note, toTaste) => { onVerdict(verdict, note, toTaste); setVerdict(null); }} />
+    </div>
+  );
+}
+
+/** إجمالي صرف المهمة الحالية — يتحدث مع كل استدعاء */
+function JobMeter({ log }: { log: LogEv[] }) {
+  const u = log.filter(e => e.type === 'usage');
+  if (!u.length) return null;
+  const inp = u.reduce((s, e) => s + (e.input || 0), 0), out = u.reduce((s, e) => s + (e.output || 0), 0);
+  const priced = u.every(e => typeof e.cost === 'number'), cost = u.reduce((s, e) => s + (e.cost || 0), 0);
+  return (
+    <div className="flex items-center gap-2 text-[12px] bg-ivory-2 rounded-lg px-2.5 py-1.5 mt-1">
+      <Activity size={13} className="text-gold-deep" /><span className="font-semibold">هذه المهمة:</span>
+      <span dir="ltr">{fmtTok(inp + out)}</span><span className="text-ink-mute">توكن ({u.length} استدعاء)</span>
+      <span className="mr-auto font-bold text-gold-deep">{priced ? money(cost) : cost ? money(cost) + '+' : '—'}</span>
     </div>
   );
 }

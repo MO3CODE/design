@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { KeyRound, RefreshCw, Cpu, Gauge, Zap, Eye, Crown, Save, CheckCircle2, XCircle, Scissors, Type } from 'lucide-react';
+import { KeyRound, RefreshCw, Cpu, Gauge, Zap, Eye, Crown, Save, CheckCircle2, XCircle, Scissors, Type, Wand2 } from 'lucide-react';
 import { api, money } from '../api';
 import { Spinner, useToast, Segmented, Toggle } from '../ui';
 
@@ -7,6 +7,7 @@ interface Settings {
   provider: 'radox' | 'anthropic'; radoxKey: string; radoxBaseUrl: string; anthropicKey: string;
   models: Record<'pro' | 'balanced' | 'fast' | 'vision', string>; routing: 'smart' | 'quality' | 'economy';
   reviewRounds: number; autoFix: boolean; monthlyBudget: number;
+  openaiKey: string; openaiBaseUrl: string; imageModel: string; imageQuality: string;
 }
 interface Model { id: string; name?: string; vision: boolean; reasoning: boolean; context?: number; inPer1k?: number; outPer1k?: number }
 
@@ -89,6 +90,24 @@ export default function SettingsPage({ health }: { health: any }) {
         </div>
       </section>
 
+      <section className="card p-6">
+        <h2 className="font-bold text-[16px] flex items-center gap-2 mb-1"><Wand2 size={18} className="text-gold-deep" /> توليد العناصر والصور — GPT Image</h2>
+        <p className="text-[13px] text-ink-soft mb-4 leading-relaxed">RadoxAI ما يدعم توليد الصور، فالتوليد يتم عبر OpenAI مباشرة بمفتاح مستقل. الوصف يُكتب بالعربي ويتحول لبرومبت احترافي بأسلوب الهوية (بدون نصوص أو شعارات داخل الصورة)، والنتيجة تنضاف لصور المنشور.</p>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div><label className="label">مفتاح OpenAI</label><input className="input" dir="ltr" value={s.openaiKey} onChange={e => set({ openaiKey: e.target.value })} placeholder="sk-..." /></div>
+          <div><label className="label">Base URL</label><input className="input" dir="ltr" value={s.openaiBaseUrl} onChange={e => set({ openaiBaseUrl: e.target.value })} /></div>
+          <div><label className="label">الموديل</label>
+            <input className="input" dir="ltr" list="img-models" value={s.imageModel} onChange={e => set({ imageModel: e.target.value })} />
+            <datalist id="img-models"><option value="gpt-image-2.5-flare" /><option value="gpt-image-2.5-sunburst" /><option value="gpt-image-2" /></datalist>
+            <p className="text-[12px] text-ink-mute mt-1.5">flare: سريع وجودة عالية لليومي · sunburst: أدق تفاصيل وأبطأ</p></div>
+          <div><label className="label">الجودة الافتراضية</label>
+            <select className="input" value={s.imageQuality} onChange={e => set({ imageQuality: e.target.value })}>
+              {['low', 'medium', 'high', 'xhigh', 'max', 'auto'].map(q => <option key={q} value={q}>{q}</option>)}
+            </select>
+            <p className="text-[12px] text-ink-mute mt-1.5">xhigh/max متاحة لموديلات 2.5 فقط — أغلى وأبطأ</p></div>
+        </div>
+      </section>
+
       <section className="card p-6 grid md:grid-cols-3 gap-6">
         <div><label className="label">جولات الفحص البصري</label>
           <select className="input" value={s.reviewRounds} onChange={e => set({ reviewRounds: Number(e.target.value) })}>
@@ -105,6 +124,7 @@ export default function SettingsPage({ health }: { health: any }) {
           <h2 className="font-bold text-[16px] mb-4">حالة السيرفر</h2>
           <div className="grid sm:grid-cols-2 gap-3 text-[13.5px]">
             <Status ok={health.aiReady} label="مفتاح الذكاء الاصطناعي" />
+            <Status ok={!!health.imageReady} label="توليد الصور (OpenAI)" />
             <Status ok={health.cutout} label="قص الخلفية التلقائي (Python + rembg)" icon={<Scissors size={14} />} />
             {Object.entries<boolean>(health.fonts || {}).map(([k, v]) => <Status key={k} ok={v} label={`خط ${({ expo: 'Expo Arabic', bahij: 'Bahij', thsans: 'ثمانية سانس', thserif: 'ثمانية سيرف', plex: 'IBM Plex', cairo: 'Cairo' } as any)[k] || k}`} icon={<Type size={14} />} hint={!v ? 'ضع ملفات الخط بـ engine/assets/fonts' : undefined} />)}
           </div>

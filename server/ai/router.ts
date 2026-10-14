@@ -3,10 +3,8 @@
 //   balanced  → خيارات بديلة، تعديلات متوسطة، إصلاح أخطاء الفحص، تحليل التقويم
 //   fast      → تعديلات صغيرة (حجم/لون/مكان/نص) كـ patch، الكابشن والإملاء
 //   vision    → الفحص البصري للتصميم المرسوم (يشوف الصورة)
-import fs from 'node:fs';
-import path from 'node:path';
-import { DATA } from '../config.js';
 import { getSettings, type Tier } from '../settings.js';
+import { setCatalogPricing } from '../usage.js';
 
 export type Task = 'design' | 'variant' | 'revise_minor' | 'revise_major' | 'revise' | 'fix' | 'review' | 'caption' | 'plan';
 
@@ -107,29 +105,8 @@ export async function route(task: Task, attempt = 0): Promise<Route> {
 
 export const canEscalate = (r: Route) => !!UP[r.tier] && getSettings().routing !== 'quality';
 
-/* ── سجل التكلفة (data/usage.jsonl) ── */
-const LEDGER = path.join(DATA, 'usage.jsonl');
-export async function costOf(model: string, u: { input: number; output: number; cacheRead: number }) {
-  const m = (await listModels()).list.find(x => x.id === model);
-  if (!m || m.inPer1k === undefined) return undefined;
-  return ((u.input - u.cacheRead) * m.inPer1k + u.cacheRead * m.inPer1k * 0.1 + u.output * (m.outPer1k || 0)) / 1000;
-}
-export async function record(e: { task: string; tier: string; model: string; post?: string; usage: { input: number; output: number; cacheRead: number; cacheWrite: number }; ok: boolean; ms: number }) {
-  const cost = await costOf(e.model, e.usage);
-  fs.appendFileSync(LEDGER, JSON.stringify({ at: new Date().toISOString(), ...e, cost }) + '\n');
-  return cost;
-}
-export function usageSummary() {
-  if (!fs.existsSync(LEDGER)) return { total: 0, month: 0, calls: 0, byTier: {}, byTask: {}, byModel: {}, recent: [] };
-  const rows = fs.readFileSync(LEDGER, 'utf8').trim().split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
-  const mo = new Date().toISOString().slice(0, 7);
-  const agg = (key: string) => rows.reduce((a: any, r: any) => {
-    const k = r[key]; a[k] = a[k] || { calls: 0, input: 0, output: 0, cost: 0 };
-    a[k].calls++; a[k].input += r.usage.input; a[k].output += r.usage.output; a[k].cost += r.cost || 0; return a;
-  }, {});
-  return {
-    total: rows.reduce((s: number, r: any) => s + (r.cost || 0), 0),
-    month: rows.filter((r: any) => r.at.startsWith(mo)).reduce((s: number, r: any) => s + (r.cost || 0), 0),
-    calls: rows.length, byTier: agg('tier'), byTask: agg('task'), byModel: agg('model'), recent: rows.slice(-25).reverse(),
-  };
-}
+/* ── أسعار المنصة (لو موجودة) لحساب التكلفة — الإعدادات تغلبها ── */
+setCatalogPricing(model => {
+  const m = catalog.list.find(x => x.id === model) || ANTHROPIC_MODELS.find(x => x.id === model);
+  return m && m.inPer1k !== undefined ? { in: (m.inPer1k || 0) * 1000, out: (m.outPer1k || 0) * 1000 } : undefined;
+});

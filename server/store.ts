@@ -9,7 +9,7 @@ export const now = () => new Date().toISOString();
 
 export interface Photo {
   id: string; name: string; file: string; w: number; h: number; aspect: number; alpha: boolean; bytes: number;
-  note?: string; uploadedAt: string;
+  note?: string; uploadedAt: string; source?: 'upload' | 'gpt-image'; prompt?: string;
 }
 export interface QcSummary { score: number; errors: string[]; warnings: string[]; lint: string[] }
 export interface Version {

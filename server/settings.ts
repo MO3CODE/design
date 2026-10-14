@@ -14,6 +14,10 @@ export interface Settings {
   reviewRounds: number;   // جولات الفحص البصري بعد التصميم
   autoFix: boolean;       // إصلاح أخطاء الفحص الآلي تلقائياً
   monthlyBudget: number;  // تنبيه لو تعدّت التكلفة الشهرية (دولار) — 0 = بدون
+  /** أسعار لكل موديل (دولار لكل مليون توكن) — RadoxAI ما ينشر أسعار بالـ API، فتُدخل هنا */
+  prices: Record<string, { in?: number; out?: number; cached?: number }>;
+  /** توليد الصور والعناصر — GPT Image عبر OpenAI مباشرة */
+  openaiKey: string; openaiBaseUrl: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto';
 }
 
 const F = path.join(DATA, 'settings.json');
@@ -27,6 +31,11 @@ const defaults = (): Settings => ({
   reviewRounds: cfg.reviewRounds,
   autoFix: process.env.AI_AUTOFIX !== '0',
   monthlyBudget: Number(process.env.AI_MONTHLY_BUDGET || 0),
+  prices: {},
+  openaiKey: process.env.OPENAI_API_KEY || '',
+  openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+  imageModel: process.env.IMAGE_MODEL || 'gpt-image-2.5-flare',
+  imageQuality: (process.env.IMAGE_QUALITY as Settings['imageQuality']) || 'high',
 });
 
 let cache: Settings | null = null;
@@ -39,6 +48,7 @@ export function getSettings(): Settings {
   cache = { ...d, ...saved, models: { ...d.models, ...(saved.models || {}) } } as Settings;
   if (!cache.radoxKey) cache.radoxKey = d.radoxKey;
   if (!cache.anthropicKey) cache.anthropicKey = d.anthropicKey;
+  if (!cache.openaiKey) cache.openaiKey = d.openaiKey;
   return cache;
 }
 
@@ -46,7 +56,7 @@ export function saveSettings(patch: Partial<Settings>) {
   const cur = getSettings();
   const next: Settings = { ...cur, ...patch, models: { ...cur.models, ...(patch.models || {}) } };
   // المفتاح المقنّع من الواجهة ما يكتب فوق الحقيقي
-  for (const k of ['radoxKey', 'anthropicKey'] as const) if (patch[k] && /^•+/.test(patch[k]!)) next[k] = cur[k];
+  for (const k of ['radoxKey', 'anthropicKey', 'openaiKey'] as const) if (patch[k] && /^•+/.test(patch[k]!)) next[k] = cur[k];
   fs.writeFileSync(F, JSON.stringify(next, null, 1));
   cache = next;
   return next;
@@ -55,5 +65,5 @@ export function saveSettings(patch: Partial<Settings>) {
 const mask = (k: string) => (k ? '••••••••' + k.slice(-4) : '');
 export function publicSettings() {
   const s = getSettings();
-  return { ...s, radoxKey: mask(s.radoxKey), anthropicKey: mask(s.anthropicKey) };
+  return { ...s, radoxKey: mask(s.radoxKey), anthropicKey: mask(s.anthropicKey), openaiKey: mask(s.openaiKey) };
 }

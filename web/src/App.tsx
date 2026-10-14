@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { LayoutGrid, Settings as Cog, Wallet, BookHeart, LogOut, Lock, AlertTriangle } from 'lucide-react';
 import { api } from './api';
 import { Spinner } from './ui';
+import { UsageMeter } from './usage';
 import Projects from './pages/Projects';
 import ProjectPage from './pages/Project';
 import PostPage from './pages/Post';
@@ -95,6 +96,7 @@ function Shell({ canLogout }: { canLogout: boolean }) {
           <NavItem href="/settings" icon={<Cog size={19} />} label="الإعدادات والموديلات" compact={inPost} active={parts[0] === 'settings'} />
         </nav>
         <div className="mt-auto p-3 space-y-2 relative">
+          <UsageMeter compact={inPost} />
           {health && !health.aiReady && (
             <a href="#/settings" className="flex items-start gap-2 rounded-xl bg-sun/10 border border-sun/25 p-3 text-[12px] text-sun/90 leading-relaxed">
               <AlertTriangle size={15} className="shrink-0 mt-0.5" /><span className={inPost ? 'hidden' : 'hidden lg:inline'}>أضف مفتاح الـ API لتفعيل التصميم الذكي</span>
