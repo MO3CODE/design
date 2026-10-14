@@ -18,6 +18,10 @@ export interface Settings {
   prices: Record<string, { in?: number; out?: number; cached?: number }>;
   /** توليد الصور والعناصر — GPT Image عبر OpenAI مباشرة */
   openaiKey: string; openaiBaseUrl: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto';
+  /** من يرسم الصور: openai (الافتراضي) أو radox لو صار يدعم /images */
+  imageProvider: 'openai' | 'radox';
+  /** موديل قراءة التصميم وكتابة برومبتات الصور (فاضي = GPT من RadoxAI تلقائياً) */
+  assetModel: string;
 }
 
 const F = path.join(DATA, 'settings.json');
@@ -36,6 +40,8 @@ const defaults = (): Settings => ({
   openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
   imageModel: process.env.IMAGE_MODEL || 'gpt-image-2.5-flare',
   imageQuality: (process.env.IMAGE_QUALITY as Settings['imageQuality']) || 'high',
+  imageProvider: (process.env.IMAGE_PROVIDER as Settings['imageProvider']) || 'openai',
+  assetModel: process.env.ASSET_MODEL || '',
 });
 
 let cache: Settings | null = null;

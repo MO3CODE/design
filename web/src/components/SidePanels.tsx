@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { UploadCloud, Trash2, AlertTriangle, Scissors, Layers, Wand2 } from 'lucide-react';
-import { api, postUrl, THEMES, KINDS, type Post } from '../api';
+import { api, postUrl, THEMES, KINDS, type Post, type Photo } from '../api';
 import { Spinner, useToast, Swatch } from '../ui';
 
 export function ThemePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -68,7 +68,7 @@ export function ContentPanel({ pid, post, onChange }: { pid: string; post: Post;
   );
 }
 
-export function PhotosPanel({ pid, post, onChange, cutout, onGenerate }: { pid: string; post: Post; onChange: (p: Post) => void; cutout?: boolean; onGenerate: () => void }) {
+export function PhotosPanel({ pid, post, onChange, cutout, onGenerate, onEditAsset }: { pid: string; post: Post; onChange: (p: Post) => void; cutout?: boolean; onGenerate: () => void; onEditAsset: (p: Photo) => void }) {
   const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false); const [drag, setDrag] = useState(false);
@@ -100,7 +100,9 @@ export function PhotosPanel({ pid, post, onChange, cutout, onGenerate }: { pid: 
             <div className={`relative aspect-square ${ph.alpha ? 'checker' : 'bg-ivory-2'}`}>
               <img src={src(ph.file)} alt="" className={`w-full h-full ${ph.alpha ? 'object-contain p-2' : 'object-cover'}`} loading="lazy" />
               <span className={`chip absolute top-1.5 right-1.5 ${ph.alpha ? 'bg-emerald-700/85 text-white' : 'bg-graphite/75 text-ivory'}`}>{ph.alpha ? <><Layers size={11} />مقصوص</> : 'صورة'}</span>
-              {ph.source === 'gpt-image' && <span className="chip absolute top-1.5 left-9 bg-gold text-white" title={ph.prompt}><Wand2 size={11} />مولّد</span>}
+              {ph.source === 'gpt-image' && <span className="chip absolute top-1.5 left-9 bg-gold text-white" title={ph.prompt}><Wand2 size={11} />مولّد{ph.asset?.rev && ph.asset.rev > 1 ? ` r${ph.asset.rev}` : ''}</span>}
+              <button className="absolute bottom-1.5 left-1.5 h-7 px-2 rounded-lg bg-graphite/85 text-ivory text-[11.5px] font-semibold flex items-center gap-1 opacity-0 group-hover:opacity-100 transition"
+                onClick={() => onEditAsset(ph)} title="عدّل نفس الصورة بكلامك"><Wand2 size={12} /> عدّل</button>
               {Math.max(ph.w, ph.h) < 1600 && <span className="chip absolute bottom-1.5 right-1.5 bg-sun text-graphite" title="دقة منخفضة"><AlertTriangle size={11} />{ph.w}px</span>}
               <button className="absolute top-1.5 left-1.5 h-7 w-7 rounded-lg bg-white/90 text-red-700 grid place-items-center opacity-0 group-hover:opacity-100 transition"
                 onClick={async () => { if (!confirm('حذف الصورة؟')) return; onChange(await api.del<Post>(`${postUrl(pid, post.id)}/photos/${ph.id}`)); }}><Trash2 size={14} /></button>

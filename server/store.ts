@@ -10,6 +10,9 @@ export const now = () => new Date().toISOString();
 export interface Photo {
   id: string; name: string; file: string; w: number; h: number; aspect: number; alpha: boolean; bytes: number;
   note?: string; uploadedAt: string; source?: 'upload' | 'gpt-image'; prompt?: string;
+  /** أصل مولّد: نوعه وسجل تعديلاته (كل تعديل = صورة جديدة مربوطة بالأصل root/parent) */
+  asset?: { kind: string; description?: string; rev: number; root?: string; parent?: string; slide?: number; field?: string;
+    history?: { at: string; instruction: string; prompt: string }[] };
 }
 export interface QcSummary { score: number; errors: string[]; warnings: string[]; lint: string[] }
 export interface Version {

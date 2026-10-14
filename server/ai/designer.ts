@@ -6,6 +6,7 @@ import sharp from 'sharp';
 import { chat, extractJSON, AIError, type Msg, type Part } from './provider.js';
 import { route, canEscalate, classifyFeedback, listModels, type Task, type Route } from './router.js';
 import { record } from '../usage.js';
+import { assetModel, textCall, PLAN_SYS, generateAsset, editPhoto, type PlannedAsset } from './images.js';
 import { systemFor } from './knowledge.js';
 import { getSettings } from '../settings.js';
 import { draftSpec } from '../calendar.js';
@@ -285,4 +286,63 @@ export async function polishCaption(pid: string, postId: string, emit: Emit) {
 export async function manualVersion(pid: string, postId: string, spec: any, emit: Emit, label?: string) {
   const post = findPost(getProject(pid), postId);
   return finish(pid, post, spec, { notes: [], source: 'manual', label: label || 'تعديل يدوي' }, emit, 0);
+}
+
+/* ═════════ أصول GPT Image تلقائية: يقرأ التصميم ← يقرر الأصل ← يولّده (خلفية شفافة) ← يركّبه ← نسخة جديدة ═════════ */
+export async function autoAssetsPost(pid: string, postId: string, emit: Emit, opts: { target?: 'auto' | 'element' | 'layer' | 'both'; note?: string; versionId?: string; slides?: number[] } = {}) {
+  const post = findPost(getProject(pid), postId);
+  const base = (opts.versionId && post.versions.find(v => v.id === opts.versionId)) || currentVersion(post);
+  if (!base) throw new Error('صمّم المنشور أولاً — الأصول التلقائية تقرأ التصميم الحالي');
+  emit({ type: 'step', text: 'قراءة التصميم الحالي' });
+  const pv = await previewAndQC(pid, post, base.spec);
+  const imgs: Part[] = [];
+  for (let k = 0; k < pv.images.length; k++) {
+    const b = await sharp(pv.images[k]).resize({ width: 540 }).jpeg({ quality: 80 }).toBuffer();
+    imgs.push({ type: 'text', text: `الشريحة ${k + 1}` }, { type: 'image', data: b.toString('base64'), media: 'image/jpeg' });
+  }
+  const want = opts.target === 'element' ? 'عنصر (element) فقط' : opts.target === 'layer' ? 'طبقة خلفية شفافة (layer) فقط'
+    : opts.target === 'both' ? 'عنصر + طبقة خلفية شفافة' : 'اللي يحتاجه التصميم فعلاً (element أو layer أو الاثنين)';
+  emit({ type: 'step', text: 'تحديد الأصل المناسب' });
+  const model = await assetModel();
+  emit({ type: 'route', task: 'asset_plan', tier: 'asset', model, reason: 'قراءة التصميم' });
+  const plan = await textCall('asset_plan', PLAN_SYS, [{ role: 'user', content: [
+    { type: 'text', text: `${postBrief(post)}\n\n## spec الحالي\n${JSON.stringify(base.spec)}\n\n## الصور الموجودة\n${post.photos.map(p => `- ${p.id} · ${p.name}${p.alpha ? ' (شفاف)' : ''}`).join('\n') || '—'}` },
+    ...imgs,
+    { type: 'text', text: `المطلوب: ${want}${opts.slides?.length ? ` · الشرائح: ${opts.slides.join('، ')}` : ''}${opts.note ? `\nتوجيه المستخدم: ${opts.note}` : ''}` },
+  ] }], pid, postId, 8000);
+  const assets: PlannedAsset[] = (Array.isArray(plan.assets) ? plan.assets : []).slice(0, 3)
+    .filter((a: any) => a && a.prompt && Number(a.slide) >= 1 && Number(a.slide) <= (base.spec.slides || []).length)
+    .map((a: any) => ({ ...a, slide: Number(a.slide), kind: a.kind === 'layer' ? 'layer' : 'element', field: a.field === 'bg_photo' || a.kind === 'layer' ? 'bg_photo' : 'photo', value: a.value || {} }));
+  if (!assets.length) { emit({ type: 'log', level: 'warn', text: 'المدير الفني شاف إن التصميم ما يحتاج أصول إضافية' }); return null; }
+  for (const a of assets) emit({ type: 'step', text: `شريحة ${a.slide}: ${a.kind === 'layer' ? 'طبقة خلفية شفافة' : 'عنصر'} — ${a.description}` });
+
+  let spec = clone(base.spec); const notes: string[] = [];
+  const made = await Promise.allSettled(assets.map(async a => {
+    emit({ type: 'step', text: `GPT Image يرسم: ${a.description}` });
+    const p = await generateAsset(pid, postId, a);
+    return { a, p };
+  }));
+  for (const m of made) {
+    if (m.status === 'rejected') { emit({ type: 'log', level: 'warn', text: String(m.reason?.message || m.reason) }); continue; }
+    const { a, p } = m.value;
+    const sl = spec.slides[a.slide - 1];
+    sl[a.field] = { ...(a.field === 'photo' ? { area: 'cutout', side: 'center', treat: 'none', grain: 0 } : { treat: 'none', grain: 0, blend: 'normal', opacity: 0.9, pos: 'center bottom', size: '100% auto', fade: 'top' }),
+      ...a.value, src: p.id };
+    notes.push(`🖼 شريحة ${a.slide}: ${a.kind === 'layer' ? 'طبقة خلفية' : 'عنصر'} مولّد — ${a.why || a.description}`);
+  }
+  if (!notes.length) throw new Error('ما قدرت أولّد أي أصل — راجع مفتاح OpenAI بالإعدادات');
+  return finish(pid, findPost(getProject(pid), postId), spec, { notes, source: 'ai', label: `أصول GPT Image على v${base.n}` }, emit, 1);
+}
+
+/** تعديل أصل بتعليمات عربية، واستبداله بالتصميم الحالي (نسخة جديدة) */
+export async function editAssetPost(pid: string, postId: string, photoId: string, instruction: string, emit: Emit, apply = true) {
+  emit({ type: 'step', text: 'GPT Image يعدّل نفس الأصل' });
+  const np = await editPhoto(pid, postId, photoId, instruction);
+  emit({ type: 'asset', photo: np });
+  const post = findPost(getProject(pid), postId);
+  const base = currentVersion(post);
+  const uses = base ? JSON.stringify(base.spec).includes(`"${photoId}"`) : false;
+  if (!apply || !base || !uses) { emit({ type: 'log', level: 'info', text: uses ? 'انحفظت النسخة المعدّلة بالصور' : 'انحفظت النسخة المعدّلة بالصور (الأصل مو مستخدم بالتصميم الحالي)' }); return { photo: np }; }
+  const swap = (o: any): any => Array.isArray(o) ? o.map(swap) : o && typeof o === 'object' ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, k === 'src' && v === photoId ? np.id : swap(v)])) : o;
+  return finish(pid, post, swap(base.spec), { notes: [`✏️ تعديل الأصل: ${instruction}`], source: 'ai', label: `تعديل أصل على v${base.n}`, feedback: instruction }, emit, 1);
 }

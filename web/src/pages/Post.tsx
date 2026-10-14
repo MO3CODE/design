@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Download, Columns2, Rows3, Code2, Trash2, Maximize2, FileText, Images, Loader2, AlertTriangle, Info, CheckCircle2, Star } from 'lucide-react';
-import { api, stream, postUrl, KINDS, STATES, themeOf, fmtDate, type Post, type Version, type QcSummary, type JobInfo } from '../api';
+import { api, stream, postUrl, KINDS, STATES, themeOf, fmtDate, type Post, type Version, type QcSummary, type JobInfo, type Photo } from '../api';
 import { SlideFrame, sizeOf, useWidth } from '../engine';
 import { Spinner, useToast, Modal, Swatch, ScoreRing, Segmented } from '../ui';
 import { AIPanel, type LogEv } from '../components/AIPanel';
 import { ContentPanel, PhotosPanel } from '../components/SidePanels';
 import { ImageGen } from '../components/ImageGen';
+import { AutoAssetsModal, AssetEditor } from '../components/AssetTools';
 import { useLiveUsage, fmtTok, fmtCost, type Agg } from '../usage';
 
 interface Prepared { spec: any; warnings: string[]; lint: { level: string; slide: number; msg: string }[] }
@@ -22,6 +23,8 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
   const [exp, setExp] = useState(false);
   const [cap, setCap] = useState<null | { caption: string; hashtags: string[]; fixes: string[] }>(null);
   const [gen, setGen] = useState<{ open: boolean; prefill?: string }>({ open: false });
+  const [autoA, setAutoA] = useState(false);
+  const [editA, setEditA] = useState<Photo | null>(null);
   // صرف هذا المنشور — يتحدث مباشرة
   const [spent, setSpent] = useState<Agg | null>(null);
   const loadSpent = () => api.get<any>(`/api/usage?post=${postId}`).then(u => setSpent(u.all)).catch(() => {});
@@ -43,7 +46,7 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
   // قراءة البث تتوقف لما تطلع من الصفحة — المهمة نفسها تكمل على السيرفر
   const readers = useRef<AbortController | null>(null);
   useEffect(() => () => readers.current?.abort(), []);
-  const DONE_TEXT: Record<string, string> = { design: 'جاهز — راجع التصميم', revise: 'تم التعديل', variants: 'الخيارات جاهزة — قارن بينها', caption: 'تم تدقيق الكابشن', manual: 'انرسمت النسخة اليدوية' };
+  const DONE_TEXT: Record<string, string> = { design: 'جاهز — راجع التصميم', revise: 'تم التعديل', variants: 'الخيارات جاهزة — قارن بينها', caption: 'تم تدقيق الكابشن', manual: 'انرسمت النسخة اليدوية', assets: 'الأصول جاهزة ومركّبة بالتصميم', asset_edit: 'تم تعديل الأصل' };
 
   /** يتابع أحداث مهمة (جديدة أو شغالة من قبل) ويعرضها بالسجل */
   async function follow(open: (onEvent: (ev: any) => void, signal: AbortSignal) => Promise<any>, doneText?: string) {
@@ -59,6 +62,7 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
         if (['step', 'route', 'usage', 'review', 'log'].includes(ev.type)) push(ev);
         if (ev.type === 'qc') push({ type: 'qc', score: ev.score });
         if (ev.type === 'version') { setViewId(ev.version.id); load(); }
+        if (ev.type === 'asset') load();
       }, ac.signal);
       if (!ac.signal.aborted) { push({ type: 'done', text: doneText || DONE_TEXT[kind] || 'تم' }); await load(); }
       return r;
@@ -118,7 +122,7 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
               { v: 'photos', label: <><Images size={14} className="inline -mt-0.5 ml-1" />الصور ({post.photos.length})</> }]} />
           </div>
           <div className="flex-1 overflow-auto p-4">
-            {tab === 'content' ? <ContentPanel pid={pid} post={post} onChange={setPost} /> : <PhotosPanel pid={pid} post={post} onChange={setPost} cutout={health?.cutout} onGenerate={() => setGen({ open: true })} />}
+            {tab === 'content' ? <ContentPanel pid={pid} post={post} onChange={setPost} /> : <PhotosPanel pid={pid} post={post} onChange={setPost} cutout={health?.cutout} onGenerate={() => setGen({ open: true })} onEditAsset={setEditA} />}
           </div>
         </aside>
 
@@ -136,7 +140,7 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
 
         {/* يسار: المصمم الذكي */}
         <aside className="w-[360px] xl:w-[390px] shrink-0 border-r border-ink/10 bg-white/50">
-          <AIPanel post={post} version={version} busy={busy} log={log} aiReady={!!health?.aiReady} onCancel={cancel} onGenerate={d => { setTab('photos'); setGen({ open: true, prefill: d }); }}
+          <AIPanel post={post} version={version} busy={busy} log={log} aiReady={!!health?.aiReady} onCancel={cancel} onGenerate={d => { setTab('photos'); setGen({ open: true, prefill: d }); }} onAutoAssets={() => setAutoA(true)}
             onDesign={d => run('/design', { direction: d }, 'جاهز — راجع التصميم')}
             onRevise={fb => { setPost({ ...post, chat: [...post.chat, { id: 'tmp', role: 'user', text: fb, at: '' }] }); run('/revise', { feedback: fb, versionId: viewId }, 'تم التعديل'); }}
             onVariants={n => run('/variants', { count: n }, 'الخيارات جاهزة — قارن بينها').then(r => setCompare(Array.isArray(r) && r.length >= 2 ? r.slice(0, 2).map((v: Version) => v.id) : null))}
@@ -152,6 +156,13 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
       {version && <ExportModal open={exp} onClose={() => setExp(false)} pid={pid} post={post} version={version} />}
       {version && <JsonEditor open={json} onClose={() => setJson(false)} pid={pid} post={post} version={version}
         onSave={(spec, label) => { setJson(false); run('/manual', { spec, label }, 'انرسمت النسخة اليدوية'); }} />}
+      <AutoAssetsModal open={autoA} onClose={() => setAutoA(false)} slides={version?.spec?.slides?.length || 1}
+        onRun={o => run('/assets/auto', { ...o, versionId: viewId }, 'الأصول جاهزة ومركّبة بالتصميم')} />
+      <AssetEditor open={!!editA} onClose={() => setEditA(null)} pid={pid} post={post} photo={editA}
+        inUse={id => !!version && JSON.stringify(version.spec).includes(`"${id}"`)}
+        onEdit={(id, ins, apply) => run(`/photos/${id}/edit`, { instruction: ins, apply }, 'تم تعديل الأصل')}
+        onUseRevision={(from, to) => { if (!version) return; const swap = (o: any): any => Array.isArray(o) ? o.map(swap) : o && typeof o === 'object' ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, k === 'src' && v === from ? to : swap(v)])) : o;
+          run('/manual', { spec: swap(version.spec), label: 'نسخة أصل سابقة' }, 'تم'); }} />
       <ImageGen open={gen.open} prefill={gen.prefill} onClose={() => setGen({ open: false })} pid={pid} post={post} onDone={p => setPost(p)} />
       <Modal open={!!cap} onClose={() => setCap(null)} title="تدقيق الكابشن" wide
         footer={<><button className="btn-ghost" onClick={() => setCap(null)}>إغلاق</button>

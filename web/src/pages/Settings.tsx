@@ -7,7 +7,7 @@ interface Settings {
   provider: 'radox' | 'anthropic'; radoxKey: string; radoxBaseUrl: string; anthropicKey: string;
   models: Record<'pro' | 'balanced' | 'fast' | 'vision', string>; routing: 'smart' | 'quality' | 'economy';
   reviewRounds: number; autoFix: boolean; monthlyBudget: number;
-  openaiKey: string; openaiBaseUrl: string; imageModel: string; imageQuality: string;
+  openaiKey: string; openaiBaseUrl: string; imageModel: string; imageQuality: string; imageProvider: 'openai' | 'radox'; assetModel: string;
 }
 interface Model { id: string; name?: string; vision: boolean; reasoning: boolean; context?: number; inPer1k?: number; outPer1k?: number }
 
@@ -93,6 +93,17 @@ export default function SettingsPage({ health }: { health: any }) {
       <section className="card p-6">
         <h2 className="font-bold text-[16px] flex items-center gap-2 mb-1"><Wand2 size={18} className="text-gold-deep" /> توليد العناصر والصور — GPT Image</h2>
         <p className="text-[13px] text-ink-soft mb-4 leading-relaxed">RadoxAI ما يدعم توليد الصور، فالتوليد يتم عبر OpenAI مباشرة بمفتاح مستقل. الوصف يُكتب بالعربي ويتحول لبرومبت احترافي بأسلوب الهوية (بدون نصوص أو شعارات داخل الصورة)، والنتيجة تنضاف لصور المنشور.</p>
+        <div className="grid md:grid-cols-2 gap-4 mb-4 pb-4 border-b border-ink/[.07]">
+          <div><label className="label">قراءة التصميم وكتابة البرومبتات (RadoxAI)</label>
+            <select className="input text-[13.5px]" dir="ltr" value={s.assetModel} onChange={e => set({ assetModel: e.target.value })}>
+              <option value="">تلقائي{models?.tiers?.asset ? ` → ${models.tiers.asset}` : ''}</option>
+              {(models?.list || []).filter(m => m.vision).map(m => <option key={m.id} value={m.id}>{m.id}</option>)}
+            </select>
+            <p className="text-[12px] text-ink-mute mt-1.5">يقرأ التصميم ويقرر الأصل ويترجم تعديلاتك — الافتراضي GPT من RadoxAI</p></div>
+          <div><label className="label">مزوّد رسم الصور</label>
+            <Segmented value={s.imageProvider} onChange={v => set({ imageProvider: v })} options={[{ v: 'openai', label: 'OpenAI' }, { v: 'radox', label: 'RadoxAI' }]} />
+            <p className="text-[12px] text-ink-mute mt-1.5">{s.imageProvider === 'radox' ? 'يستخدم مفتاح RadoxAI — حالياً RadoxAI ما يدعم /images (جرّبناه)، فاستخدمه فقط لو أضافوه' : 'رسم الصورة نفسها عبر OpenAI بمفتاح مستقل (تحت)'}</p></div>
+        </div>
         <div className="grid md:grid-cols-2 gap-4">
           <div><label className="label">مفتاح OpenAI</label><input className="input" dir="ltr" value={s.openaiKey} onChange={e => set({ openaiKey: e.target.value })} placeholder="sk-..." /></div>
           <div><label className="label">Base URL</label><input className="input" dir="ltr" value={s.openaiBaseUrl} onChange={e => set({ openaiBaseUrl: e.target.value })} /></div>

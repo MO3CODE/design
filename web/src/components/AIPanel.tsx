@@ -9,8 +9,8 @@ export interface LogEv { type: string; text?: string; tier?: string; model?: str
 
 const QUICK = ['كبّر الأصل شوي', 'صغّر العنوان', 'الشعار بالوسط فوق', 'خفّف التكستشر', 'اقلب الأصل', 'شريحة الختام داكنة', 'وسّع المسافات'];
 
-export function AIPanel({ post, version, busy, log, aiReady, onDesign, onRevise, onVariants, onVerdict, onCaption, onCancel, onGenerate }: {
-  post: Post; version?: Version; busy: boolean; log: LogEv[]; aiReady: boolean; onCancel: () => void; onGenerate: (desc: string) => void;
+export function AIPanel({ post, version, busy, log, aiReady, onDesign, onRevise, onVariants, onVerdict, onCaption, onCancel, onGenerate, onAutoAssets }: {
+  post: Post; version?: Version; busy: boolean; log: LogEv[]; aiReady: boolean; onCancel: () => void; onGenerate: (desc: string) => void; onAutoAssets: () => void;
   onDesign: (direction?: string) => void; onRevise: (fb: string) => void; onVariants: (n: number) => void;
   onVerdict: (v: 'approved' | 'rejected' | null, note: string, toTaste: boolean) => void; onCaption: () => void;
 }) {
@@ -99,6 +99,10 @@ export function AIPanel({ post, version, busy, log, aiReady, onDesign, onRevise,
             <button className="btn-line btn-sm flex-1" disabled={busy || !aiReady} onClick={() => onVariants(2)} title="خيارين مختلفين للمقارنة جنب بعض"><Copy size={14} /> خيارات بديلة</button>
             <button className="btn-line btn-sm flex-1" disabled={busy || !aiReady} onClick={() => onDesign()}><Sparkles size={14} /> تصميم من جديد</button>
             <button className="btn-line btn-sm" disabled={busy || !aiReady} onClick={onCaption} title="تدقيق إملائي للكابشن (أرخص موديل)"><SpellCheck size={14} /></button>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn-sm btn flex-1 text-graphite shadow-card" style={{ background: 'linear-gradient(180deg,#E8D9B8,#CDB98F)' }} disabled={busy || !aiReady} onClick={onAutoAssets}
+              title="يقرأ التصميم ويولّد العنصر أو الخلفية الشفافة المناسبة بـ GPT Image"><Wand2 size={14} /> أصول تلقائية بـ GPT Image</button>
           </div>
         </div>
       )}

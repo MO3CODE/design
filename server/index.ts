@@ -15,10 +15,10 @@ import { prepareSpec, engineAssets, fontCSS, brand, presets, fontStatus } from '
 import { probe, cutoutAvailable, checkCutout } from './photos.js';
 import { exportFull, zipDir, INTERNAL_TOKEN, closeRenderer } from './render.js';
 import { lintSpec } from './lint.js';
-import { designPost, revisePost, variantsPost, polishCaption, manualVersion } from './ai/designer.js';
+import { designPost, revisePost, variantsPost, polishCaption, manualVersion, autoAssetsPost, editAssetPost } from './ai/designer.js';
 import { startJob, getJob, isBusy, summary, subscribe, cancelJob, projectJobs, resetStaleStates, type Emit } from './jobs.js';
 import { listModels, resolveTier } from './ai/router.js';
-import { generate as generateImage } from './ai/images.js';
+import { generate as generateImage, assetModel } from './ai/images.js';
 import { summary as usageSummary, live as usageLive, pricesChanged, priceOf } from './usage.js';
 import { getSettings, saveSettings, publicSettings } from './settings.js';
 
@@ -194,6 +194,14 @@ app.post('/api/projects/:pid/posts/:postId/variants', (req, res) => jobRoute(req
 app.post('/api/projects/:pid/posts/:postId/caption', (req, res) => jobRoute(req, res, 'caption', 'تدقيق الكابشن', e => polishCaption(P(req), Q(req), e)));
 app.post('/api/projects/:pid/posts/:postId/manual', (req, res) => jobRoute(req, res, 'manual', 'تعديل يدوي', e => manualVersion(P(req), Q(req), req.body?.spec, e, req.body?.label)));
 
+app.post('/api/projects/:pid/posts/:postId/assets/auto', (req, res) => jobRoute(req, res, 'assets', 'أصول GPT Image', e => autoAssetsPost(P(req), Q(req), e, {
+  target: req.body?.target, note: req.body?.note, versionId: req.body?.versionId, slides: Array.isArray(req.body?.slides) ? req.body.slides.map(Number) : undefined })));
+app.post('/api/projects/:pid/posts/:postId/photos/:photoId/edit', (req, res) => {
+  const ins = String(req.body?.instruction || '').trim();
+  if (!ins) return res.status(400).json({ error: 'اكتب التعديل المطلوب' });
+  jobRoute(req, res, 'asset_edit', 'تعديل أصل', e => editAssetPost(P(req), Q(req), String(req.params.photoId), ins, e, req.body?.apply !== false));
+});
+
 /* ── متابعة المهمة بعد الرجوع للصفحة ── */
 app.get('/api/projects/:pid/posts/:postId/job', (req, res) => res.json({ job: summary(getJob(P(req), Q(req))) || null }));
 app.get('/api/projects/:pid/posts/:postId/job/stream', (req, res) => {
@@ -286,7 +294,7 @@ app.get('/api/projects/:pid/posts/:postId/exports/:eid/zip', wrap(async (req, re
 app.get('/api/settings', (_req, res) => res.json(publicSettings()));
 app.put('/api/settings', wrap(async (req, res) => {
   const b = req.body || {}; const allowed: any = {};
-  for (const k of ['provider', 'radoxKey', 'radoxBaseUrl', 'anthropicKey', 'models', 'routing', 'reviewRounds', 'autoFix', 'monthlyBudget', 'prices', 'openaiKey', 'openaiBaseUrl', 'imageModel', 'imageQuality']) if (b[k] !== undefined) allowed[k] = b[k];
+  for (const k of ['provider', 'radoxKey', 'radoxBaseUrl', 'anthropicKey', 'models', 'routing', 'reviewRounds', 'autoFix', 'monthlyBudget', 'prices', 'openaiKey', 'openaiBaseUrl', 'imageModel', 'imageQuality', 'imageProvider', 'assetModel']) if (b[k] !== undefined) allowed[k] = b[k];
   saveSettings(allowed);
   if (allowed.prices) pricesChanged();
   res.json(publicSettings());
@@ -295,6 +303,7 @@ app.get('/api/models', wrap(async (req, res) => {
   const { list, error } = await listModels(req.query.refresh === '1');
   const tiers: any = {};
   for (const t of ['pro', 'balanced', 'fast', 'vision'] as const) tiers[t] = await resolveTier(t).catch(() => '');
+  tiers.asset = await assetModel().catch(() => '');
   res.json({ list, error, tiers });
 }));
 app.get('/api/usage', (req, res) => res.json(usageSummary({ project: req.query.project ? String(req.query.project) : undefined, post: req.query.post ? String(req.query.post) : undefined })));
