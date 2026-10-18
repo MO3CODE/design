@@ -4,7 +4,7 @@ import { api, money } from '../api';
 import { Spinner, useToast, Segmented, Toggle } from '../ui';
 
 interface Settings {
-  provider: 'radox' | 'anthropic'; radoxKey: string; radoxBaseUrl: string; anthropicKey: string;
+  provider: 'radox' | 'anthropic'; radoxKey: string; radoxBaseUrl: string; anthropicKey: string; keysFromEnv?: boolean;
   models: Record<'pro' | 'balanced' | 'fast' | 'vision', string>; routing: 'smart' | 'quality' | 'economy';
   reviewRounds: number; autoFix: boolean; monthlyBudget: number;
   imageModel: string; imageQuality: string; assetModel: string;
@@ -31,6 +31,29 @@ function ImageTest() {
           <div><b>{r.provider} · <span dir="ltr">{r.model}</span></b> — {r.message} <span className="text-ink-mute">({(r.ms / 1000).toFixed(1)}ث)</span></div>
         </div>
       )}
+    </div>
+  );
+}
+
+function FontsUpload({ onDone }: { onDone: () => void }) {
+  const [busy, setBusy] = useState(false); const toast = useToast();
+  const up = async (files: FileList | null) => {
+    if (!files?.length) return; setBusy(true);
+    try {
+      let saved: string[] = []; let expected: string[] = [];
+      for (const f of Array.from(files)) {   // ملف ملف (حد الطلب على Vercel 4.5MB)
+        const fd = new FormData(); fd.append('fonts', f);
+        const r = await api.post<{ saved: string[]; expected: string[] }>('/api/fonts', fd); saved = saved.concat(r.saved); expected = r.expected;
+      }
+      if (saved.length) { toast('ok', `انرفع ${saved.length} خط`); onDone(); }
+      else toast('err', `أسماء الملفات لازم تطابق: ${expected.filter(x => /Expo|Bahij/.test(x)).join('، ')}`);
+    } catch (e: any) { toast('err', e.message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="mt-4 pt-4 border-t border-ink/[.07] flex flex-wrap items-center gap-3">
+      <label className="btn-line cursor-pointer">{busy ? <Spinner /> : <Type size={15} />} رفع الخطوط التجارية (Expo Arabic / Bahij)
+        <input type="file" multiple accept=".ttf,.otf" hidden onChange={e => up(e.target.files)} /></label>
+      <span className="text-[12px] text-ink-mute flex-1 min-w-[220px]">ما تنرفع لـ GitHub (رخصة) — ارفعها هنا مرة وحدة بنفس أسماء ملفاتها (من مجلد المهارة assets/fonts) وتنحفظ بالتخزين الخاص.</span>
     </div>
   );
 }
@@ -65,12 +88,16 @@ export default function SettingsPage({ health }: { health: any }) {
         <Segmented value={s.provider} onChange={v => set({ provider: v })} options={[{ v: 'radox', label: 'RadoxAI' }, { v: 'anthropic', label: 'Anthropic مباشرة' }]} />
         {s.provider === 'radox' ? (
           <div className="grid md:grid-cols-2 gap-4 mt-5">
-            <div><label className="label">مفتاح RadoxAI</label><input className="input" dir="ltr" value={s.radoxKey} onChange={e => set({ radoxKey: e.target.value })} placeholder="cc_..." /></div>
+            <div><label className="label">مفتاح RadoxAI</label>{s.keysFromEnv
+              ? <div className="input bg-ivory-2 text-[13px] text-ink-soft" dir="rtl">{s.radoxKey ? <>من متغيرات Vercel <span dir="ltr">{s.radoxKey}</span></> : 'أضف RADOX_API_KEY بمتغيرات البيئة في Vercel'}</div>
+              : <input className="input" dir="ltr" value={s.radoxKey} onChange={e => set({ radoxKey: e.target.value })} placeholder="cc_..." />}</div>
             <div><label className="label">Base URL</label><input className="input" dir="ltr" value={s.radoxBaseUrl} onChange={e => set({ radoxBaseUrl: e.target.value })} /></div>
             <p className="md:col-span-2 text-[12.5px] text-ink-mute">يُفضّل وضع المفتاح بملف ‎.env على السيرفر (RADOX_API_KEY) — المفتاح ما يطلع للمتصفح أبداً.</p>
           </div>
         ) : (
-          <div className="mt-5"><label className="label">مفتاح Anthropic</label><input className="input" dir="ltr" value={s.anthropicKey} onChange={e => set({ anthropicKey: e.target.value })} placeholder="sk-ant-..." />
+          <div className="mt-5"><label className="label">مفتاح Anthropic</label>{s.keysFromEnv
+            ? <div className="input bg-ivory-2 text-[13px] text-ink-soft">{s.anthropicKey ? 'من متغيرات Vercel' : 'أضف ANTHROPIC_API_KEY بمتغيرات البيئة في Vercel'}</div>
+            : <input className="input" dir="ltr" value={s.anthropicKey} onChange={e => set({ anthropicKey: e.target.value })} placeholder="sk-ant-..." />}
             <p className="text-[12.5px] text-ink-mute mt-2">مع Anthropic المباشر تتكاش التعليمات الثابتة (دليل المهارة وسجل الذوق) — الطلبات المتكررة أرخص بحوالي 90% على الجزء المكاش.</p></div>
         )}
       </section>
@@ -149,8 +176,9 @@ export default function SettingsPage({ health }: { health: any }) {
           <div className="grid sm:grid-cols-2 gap-3 text-[13.5px]">
             <Status ok={health.aiReady} label="مفتاح الذكاء الاصطناعي" />
             <Status ok={health.cutout} label="قص الخلفية التلقائي (Python + rembg)" icon={<Scissors size={14} />} />
-            {Object.entries<boolean>(health.fonts || {}).map(([k, v]) => <Status key={k} ok={v} label={`خط ${({ expo: 'Expo Arabic', bahij: 'Bahij', thsans: 'ثمانية سانس', thserif: 'ثمانية سيرف', plex: 'IBM Plex', cairo: 'Cairo' } as any)[k] || k}`} icon={<Type size={14} />} hint={!v ? 'ضع ملفات الخط بـ engine/assets/fonts' : undefined} />)}
+            {Object.entries<boolean>(health.fonts || {}).map(([k, v]) => <Status key={k} ok={v} label={`خط ${({ expo: 'Expo Arabic', bahij: 'Bahij', thsans: 'ثمانية سانس', thserif: 'ثمانية سيرف', plex: 'IBM Plex', cairo: 'Cairo' } as any)[k] || k}`} icon={<Type size={14} />} hint={!v ? 'ارفعه من «الخطوط» تحت' : undefined} />)}
           </div>
+          <FontsUpload onDone={() => location.reload()} />
         </section>
       )}
     </div>

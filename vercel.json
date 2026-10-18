@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build:vercel",
+  "outputDirectory": "web/dist",
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 300,
+      "includeFiles": "{engine/**,node_modules/@sparticuz/chromium/bin/**,node_modules/@img/**}"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/index" },
+    { "source": "/files/:path*", "destination": "/api/index" },
+    { "source": "/((?!engine/|assets/|api/|files/|favicon|logo-|symbol-|thmanyah|IBMPlex).*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    { "source": "/engine/assets/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }] }
+  ]
+}

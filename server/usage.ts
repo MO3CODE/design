@@ -2,10 +2,12 @@
 // التكلفة = أسعارك بالإعدادات (لكل مليون توكن) ← أسعار المنصة لو موجودة. الحسابات تُعاد عند تغيير الأسعار.
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import type { Response } from 'express';
 import { DATA } from './config.js';
 import { getSettings } from './settings.js';
+import { BLOB, listKeys, readText, writeText } from './storage.js';
 
 export interface Usage { input: number; output: number; cacheRead: number; cacheWrite: number; reasoning?: number; images?: number; imageIn?: number }
 export interface UsageRow {
@@ -14,16 +16,34 @@ export interface UsageRow {
 }
 
 const LEDGER = path.join(DATA, 'usage.jsonl');
+const NL = String.fromCharCode(10);
 const bus = new EventEmitter(); bus.setMaxListeners(200);
-let rows: UsageRow[] | null = null;
+let rows: UsageRow[] | null = null; let rowsAt = 0;
+const parse = (txt: string) => txt.split('\n').filter(l => l.trim()).map(l => { try { const r = JSON.parse(l); r.kind ||= r.tier === 'image' ? 'image' : 'chat'; return r as UsageRow; } catch { return null; } }).filter(Boolean) as UsageRow[];
 
-function load(): UsageRow[] {
-  if (rows) return rows;
-  rows = [];
-  if (fs.existsSync(LEDGER)) for (const l of fs.readFileSync(LEDGER, 'utf8').split('\n')) {
-    if (!l.trim()) continue;
-    try { const r = JSON.parse(l); r.kind ||= r.tier === 'image' ? 'image' : 'chat'; rows.push(r); } catch {}
+// على Vercel: كل جهاز (instance) يكتب ملفه الخاص لكل يوم — ما فيه تعارض كتابة بين الأجهزة
+const INSTANCE = crypto.randomBytes(6).toString('hex');
+const mine: Record<string, UsageRow[]> = {};
+let flushing: Promise<void> | null = null; let dirty = new Set<string>();
+async function flush() {
+  const days = [...dirty]; dirty = new Set();
+  for (const d of days) await writeText(`usage/${d}/${INSTANCE}.jsonl`, mine[d].map(r => JSON.stringify(r)).join(NL) + NL);
+}
+/** ينتظر حفظ السجل (يُستدعى قبل نهاية المهمة على Vercel) */
+export async function flushUsage() { while (dirty.size || flushing) { if (flushing) await flushing; else { flushing = flush().finally(() => { flushing = null; }); await flushing; } } }
+
+/** كل السجل: محلياً من usage.jsonl، وعلى Vercel يجمع ملفات كل الأجهزة (كاش قصير) */
+export async function loadUsage(maxAgeMs = 4000): Promise<UsageRow[]> {
+  if (!BLOB) {
+    if (!rows) rows = fs.existsSync(LEDGER) ? parse(fs.readFileSync(LEDGER, 'utf8')) : [];
+    return rows;
   }
+  if (rows && Date.now() - rowsAt < maxAgeMs) return rows;
+  const keys = (await listKeys('usage/')).filter(k => k.endsWith('.jsonl'));
+  const all = (await Promise.all(keys.map(async k => k.endsWith(`/${INSTANCE}.jsonl`) ? [] : parse((await readText(k)) || '')))).flat();
+  for (const list of Object.values(mine)) all.push(...list);
+  all.sort((a, b) => a.at.localeCompare(b.at));
+  rows = all; rowsAt = Date.now();
   return rows;
 }
 
@@ -45,8 +65,13 @@ export function costOf(model: string, u: Usage): number | undefined {
 
 export function record(e: Omit<UsageRow, 'at' | 'cost'>): number | undefined {
   const row: UsageRow = { at: new Date().toISOString(), ...e, cost: costOf(e.model, e.usage) };
-  load().push(row);
-  fs.appendFileSync(LEDGER, JSON.stringify(row) + '\n');
+  if (BLOB) {
+    const d = row.at.slice(0, 10); (mine[d] ||= []).push(row); dirty.add(d); rows?.push(row);
+    if (!flushing) flushing = flush().finally(() => { flushing = null; });
+  } else {
+    (rows ||= fs.existsSync(LEDGER) ? parse(fs.readFileSync(LEDGER, 'utf8')) : []).push(row);
+    fs.mkdirSync(DATA, { recursive: true }); fs.appendFileSync(LEDGER, JSON.stringify(row) + '\n');
+  }
   bus.emit('row', row);
   return row.cost;
 }
@@ -69,8 +94,8 @@ const group = (list: UsageRow[], key: (r: UsageRow) => string | undefined) => {
   return out;
 };
 
-export function summary(filter: { project?: string; post?: string } = {}) {
-  let list = load();
+export async function summary(filter: { project?: string; post?: string } = {}) {
+  let list = await loadUsage();
   if (filter.project) list = list.filter(r => r.project === filter.project);
   if (filter.post) list = list.filter(r => r.post === filter.post);
   const day = new Date().toISOString().slice(0, 10), mo = day.slice(0, 7);
@@ -89,17 +114,26 @@ export function summary(filter: { project?: string; post?: string } = {}) {
   };
 }
 
-/** بث مباشر (SSE): كل سطر جديد + الإجماليات المحدّثة */
-export function live(res: Response) {
+/** بث مباشر (SSE). محلياً اتصال دائم؛ على Vercel كل اتصال يرسل الجديد من Last-Event-ID ويقفل،
+ *  والمتصفح يعيد الاتصال تلقائياً كل 4 ثواني (EventSource) — نفس التجربة بدون اتصال طويل. */
+export async function live(res: Response, lastId?: string) {
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
   res.setHeader('Cache-Control', 'no-cache'); res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
-  const totals = () => { const s = summary(); return { today: s.today, month: s.month, all: s.all, budget: s.budget }; };
-  const send = (ev: string, data: any) => res.write(`event: ${ev}\ndata: ${JSON.stringify(data)}\n\n`);
-  send('totals', totals());
-  const on = (row: UsageRow) => { send('row', { ...row, cost: cost(row) }); send('totals', totals()); };
+  const totals = async () => { const s = await summary(); return { today: s.today, month: s.month, all: s.all, budget: s.budget }; };
+  const send = (ev: string, data: any, id?: string) => res.write((id ? `id: ${id}${NL}` : '') + `event: ${ev}${NL}data: ${JSON.stringify(data)}${NL}${NL}`);
+  if (BLOB) {
+    res.write(`retry: 4000${NL}${NL}`);
+    const list = await loadUsage(0);
+    const fresh = lastId ? list.filter(r => r.at > lastId) : [];
+    for (const r of fresh) send('row', { ...r, cost: cost(r) }, r.at);
+    send('totals', await totals(), list[list.length - 1]?.at || lastId || new Date(0).toISOString());
+    return res.end();
+  }
+  send('totals', await totals());
+  const on = async (row: UsageRow) => { send('row', { ...row, cost: cost(row) }); send('totals', await totals()); };
   bus.on('row', on);
-  const ping = setInterval(() => res.write(': ping\n\n'), 25000);
+  const ping = setInterval(() => res.write(`: ping${NL}${NL}`), 25000);
   res.on('close', () => { clearInterval(ping); bus.off('row', on); });
 }
 

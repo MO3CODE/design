@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const ENGINE = path.join(ROOT, 'engine');
-export const DATA = path.resolve(process.env.DATA_DIR || path.join(ROOT, 'data'));
+export const DATA = path.resolve(process.env.DATA_DIR || (process.env.VERCEL ? '/tmp/data' : path.join(ROOT, 'data')));
 fs.mkdirSync(DATA, { recursive: true });
 
 const num = (v: string | undefined, d: number) => (v === undefined || v === '' || isNaN(Number(v)) ? d : Number(v));

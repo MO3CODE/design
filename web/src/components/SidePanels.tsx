@@ -68,7 +68,7 @@ export function ContentPanel({ pid, post, onChange }: { pid: string; post: Post;
   );
 }
 
-export function PhotosPanel({ pid, post, onChange, cutout, onGenerate, onEditAsset }: { pid: string; post: Post; onChange: (p: Post) => void; cutout?: boolean; onGenerate: () => void; onEditAsset: (p: Photo) => void }) {
+export function PhotosPanel({ pid, post, onChange, cutout, direct, onGenerate, onEditAsset }: { pid: string; post: Post; onChange: (p: Post) => void; cutout?: boolean; direct?: boolean; onGenerate: () => void; onEditAsset: (p: Photo) => void }) {
   const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false); const [drag, setDrag] = useState(false);
@@ -76,12 +76,25 @@ export function PhotosPanel({ pid, post, onChange, cutout, onGenerate, onEditAss
     if (!files?.length) return;
     setBusy(true);
     try {
-      const fd = new FormData(); for (const f of Array.from(files)) fd.append('photos', f);
-      const r = await api.post<{ post: Post; warnings: string[] }>(postUrl(pid, post.id) + '/photos', fd);
+      let r: { post: Post; warnings: string[] };
+      if (direct) {   // على Vercel: رفع مباشر للتخزين (بدون حد 4.5MB وبدقة الأصل) ثم تسجيل
+        const { upload } = await import('@vercel/blob/client');
+        const items: { pathname: string; name: string }[] = [];
+        for (const f of Array.from(files)) {
+          const ext = (f.name.match(/\.(png|jpe?g|webp|avif|heic|heif|tiff?)$/i)?.[1] || 'jpg').toLowerCase();
+          const pathname = `uploads/${Math.random().toString(36).slice(2, 12)}${Date.now().toString(36)}.${ext}`;
+          await upload(pathname, f, { access: 'private', handleUploadUrl: '/api/blob/upload', multipart: f.size > 8 * 1024 * 1024 } as any);
+          items.push({ pathname, name: f.name });
+        }
+        r = await api.post(postUrl(pid, post.id) + '/photos/register', { items });
+      } else {
+        const fd = new FormData(); for (const f of Array.from(files)) fd.append('photos', f);
+        r = await api.post(postUrl(pid, post.id) + '/photos', fd);
+      }
       onChange(r.post); r.warnings.forEach(w => toast('info', w));
     } catch (e: any) { toast('err', e.message); } finally { setBusy(false); }
   }
-  const src = (file: string) => `/files/${pid}/posts/${post.id}/photos/${file}`;
+  const src = (file: string) => `/files/projects/${pid}/posts/${post.id}/photos/${file}`;
   return (
     <div className="space-y-3">
       <div onClick={() => input.current?.click()} onDragOver={e => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}

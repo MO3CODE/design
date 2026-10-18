@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import QRCode from 'qrcode';
 import { ENGINE, DATA, cfg } from './config.js';
 import { prepPhoto } from './photos.js';
+import { fileUrl, ensureLocal, persist, BLOB, listKeys } from './storage.js';
 import { postDir, type Post } from './store.js';
 
 export const readJSON = (f: string) => JSON.parse(fs.readFileSync(f, 'utf8'));
@@ -66,26 +67,37 @@ export function engineAssets() {
   return assetsCache;
 }
 
-/** الخطوط المتوفرة فعلاً (الخطوط التجارية ما تنرفع للريبو — لو ناقصة يرجع المحرك لـ IBM Plex) */
+/* ── الخطوط: المجانية داخل الريبو؛ التجارية (Expo/Bahij) تُرفع من الإعدادات للتخزين (_fonts/) أو مجلد FONTS_DIR محلياً ── */
+let uploadedFonts = new Set<string>(); let fontsAt = 0;
+export async function refreshFonts(maxAgeMs = 60000) {
+  if (Date.now() - fontsAt < maxAgeMs) return;
+  fontsAt = Date.now();
+  uploadedFonts = new Set((await listKeys('_fonts/').catch(() => [])).map(k => k.slice('_fonts/'.length)));
+}
+const bundled = (f: string) => fs.existsSync(path.join(ENGINE, 'assets', 'fonts', f)) || (!!cfg.fontsDir && fs.existsSync(path.join(cfg.fontsDir, f)));
+const fontUrl = (f: string) => bundled(f) || !uploadedFonts.has(f) ? `${engineAssets().fontBase}${encodeURIComponent(f)}` : `/files/_fonts/${encodeURIComponent(f)}`;
+
+/** الخطوط المتوفرة فعلاً (لو ناقصة يرجع المحرك لـ IBM Plex) */
 export function fontStatus() {
   const F = engineAssets().fonts; const out: Record<string, boolean> = {};
-  for (const [k, ws] of Object.entries<any>(F)) out[k] = Object.values<string>(ws).every(f => fs.existsSync(path.join(ENGINE, 'assets', 'fonts', f)) || (!!cfg.fontsDir && fs.existsSync(path.join(cfg.fontsDir, f))));
+  for (const [k, ws] of Object.entries<any>(F)) out[k] = Object.values<string>(ws).every(f => bundled(f) || uploadedFonts.has(f));
   return out;
 }
+export function fontFiles() { return [...new Set(Object.values<any>(engineAssets().fonts).flatMap(ws => Object.values<string>(ws)))]; }
 
 export function fontCSS() {
   const Ax = engineAssets();
   const fam: Record<string, string> = { bahij: 'Bahij', plex: 'Plex', cairo: 'Cairo', expo: 'Expo', thsans: 'ThSans', thserif: 'ThSerif' };
   let css = '';
   for (const [k, ws] of Object.entries<any>(Ax.fonts)) for (const [w, f] of Object.entries<string>(ws))
-    css += `@font-face{font-family:'${fam[k]}';font-weight:${w};src:url("${Ax.fontBase}${encodeURIComponent(f)}")}\n`;
+    css += `@font-face{font-family:'${fam[k]}';font-weight:${w};src:url("${fontUrl(f)}")}\n`;
   css += `@font-face{font-family:'tabler';src:url("${Ax.icons.regular}")}@font-face{font-family:'tabler-thin';src:url("${Ax.icons.thin}")}@font-face{font-family:'tabler-f';src:url("${Ax.icons.filled}")}
 .ti{font-family:'tabler';font-style:normal;line-height:1;display:inline-block}.tif{font-family:'tabler-f';font-style:normal;line-height:1;display:inline-block}.tit{font-family:'tabler-thin';font-style:normal;line-height:1;display:inline-block}`;
   return css;
 }
 
 /* ── تجهيز spec للرسم: preset + الصور (تدريج/قص) + QR → روابط ── */
-export const fileUrl = (abs: string) => '/files/' + path.relative(path.join(DATA, 'projects'), abs).split(path.sep).map(encodeURIComponent).join('/');
+export { fileUrl } from './storage.js';
 
 /* ── مكتبة الصور المشتركة (صور حقيقية من Unsplash — خلفيات المملكة وتوقيع وأشخاص) متاحة لكل المنشورات ── */
 export const LIBRARY: Record<string, string> = {
@@ -123,7 +135,8 @@ export async function prepareSpec(pid: string, post: Post, spec0: any): Promise<
     if (!ph || !ph.src) return;
     const p = findPhoto(post, ph.src);
     if (!p) { warnings.push(`الصورة غير موجودة (تخطيتها): ${ph.src}`); for (const k of Object.keys(ph)) delete ph[k]; return; }
-    const src = path.isAbsolute(p.abs) ? p.abs : path.join(dir, 'photos', p.abs);
+    const src = path.isAbsolute(p.abs) ? p.abs : await ensureLocal(path.join(dir, 'photos', p.abs));
+    if (!src) { warnings.push(`ملف الصورة مفقود بالتخزين: ${ph.src}`); for (const k of Object.keys(ph)) delete ph[k]; return; }
     const cut = (ph.cutout ?? ph.area === 'cutout') === true || ph.cutout === true;
     try {
       const r = await prepPhoto(src, work, { treat: ph.treat || defTreat, grain: ph.grain ?? 0.06, cutout: cut && !p.alpha, crop: ph.crop });
@@ -150,7 +163,7 @@ export async function prepareSpec(pid: string, post: Post, spec0: any): Promise<
     if (sl.device?.src) { const p = findPhoto(post, sl.device.src); if (p && !path.isAbsolute(p.abs)) sl.device._file = fileUrl(path.join(dir, 'photos', p.abs)); }
     if (sl.qr) {
       const q = path.join(work, `qr_${crypto.createHash('md5').update(String(sl.qr)).digest('hex').slice(0, 8)}.png`);
-      if (!fs.existsSync(q)) { fs.mkdirSync(work, { recursive: true }); await QRCode.toFile(q, String(sl.qr), { margin: 1, scale: 20, errorCorrectionLevel: 'M', color: { dark: '#2B241A', light: '#FFFFFF' } }); }
+      if (!fs.existsSync(q)) { fs.mkdirSync(work, { recursive: true }); await QRCode.toFile(q, String(sl.qr), { margin: 1, scale: 20, errorCorrectionLevel: 'M', color: { dark: '#2B241A', light: '#FFFFFF' } }); await persist(q); }
       sl._qr = fileUrl(q);
     }
   }

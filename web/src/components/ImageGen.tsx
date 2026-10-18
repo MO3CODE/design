@@ -38,7 +38,7 @@ export function ImageGen({ open, onClose, pid, post, prefill, onDone }: { open: 
       toast('ok', `تولّدت ${r.photos.length} صورة وانضافت لصور المنشور`);
     } catch (e: any) { toast('err', e.message); } finally { setBusy(false); }
   };
-  const src = (f: string) => `/files/${pid}/posts/${post.id}/photos/${f}`;
+  const src = (f: string) => `/files/projects/${pid}/posts/${post.id}/photos/${f}`;
 
   return (
     <Modal open={open} onClose={() => !busy && onClose()} title={<span className="flex items-center gap-2"><Wand2 size={18} className="text-gold-deep" /> توليد بـ GPT Image</span>} wide

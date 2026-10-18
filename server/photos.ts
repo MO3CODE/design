@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import sharp from 'sharp';
 import { cfg, ENGINE } from './config.js';
+import { BLOB, keyOf, readJSON, exists, persist } from './storage.js';
 
 export interface PrepOpts { treat?: string; grain?: number; cutout?: boolean; crop?: number[]; nocrop?: boolean }
 export interface PrepResult { file: string; w: number; h: number; aspect: number; alpha: boolean; cutoutModel?: string }
@@ -14,6 +15,7 @@ let pyOk: boolean | null = null;
 let pyCheck: Promise<boolean> | null = null;
 /** فحص بايثون + rembg بالخلفية (الاستيراد ياخذ ثواني — ما نوقف السيرفر عشانه) */
 export function checkCutout(): Promise<boolean> {
+  if (process.env.VERCEL) return Promise.resolve(false);   // ما فيه بايثون على Vercel — الأصول ترتفع PNG مقصوصة
   if (!pyCheck) pyCheck = new Promise<boolean>(res => {
     try {
       const p = spawn(cfg.python, ['-c', 'import rembg, numpy, PIL; print("ok")']);
@@ -127,11 +129,13 @@ function runPy(args: string[]): Promise<any> {
 export async function prepPhoto(src: string, workDir: string, o: PrepOpts): Promise<PrepResult> {
   const treat = o.treat || 'natural', grainAmt = o.grain ?? 0.06;
   const st = fs.statSync(src);
-  const key = crypto.createHash('md5').update(JSON.stringify([src, st.mtimeMs, treat, grainAmt, !!o.cutout, o.crop || null, !!o.nocrop])).digest('hex').slice(0, 10);
+  // على Vercel الملف ينزل لـ /tmp بكل جهاز (تاريخ تعديل مختلف) — نعتمد المسار والحجم (الصور ما تتعدّل، التعديل = صورة جديدة)
+  const key = crypto.createHash('md5').update(JSON.stringify([BLOB ? keyOf(src) : src, BLOB ? st.size : st.mtimeMs, treat, grainAmt, !!o.cutout, o.crop || null, !!o.nocrop])).digest('hex').slice(0, 10);
   fs.mkdirSync(workDir, { recursive: true });
   const base = path.join(workDir, `${path.parse(src).name}_${treat}${o.cutout ? '_cut' : ''}_${key}`);
   const metaF = base + '.json';
   if (fs.existsSync(metaF)) { const m = JSON.parse(fs.readFileSync(metaF, 'utf8')); if (fs.existsSync(m.file)) return m; }
+  if (BLOB) { const m = await readJSON<PrepResult>(keyOf(metaF)); if (m && await exists(m.file)) return m; }   // جاهزة من جهاز ثاني
 
   let input: string | Buffer = src, cutoutModel: string | undefined;
   const info = await probe(src);
@@ -167,6 +171,7 @@ export async function prepPhoto(src: string, workDir: string, o: PrepOpts): Prom
   else await s.removeAlpha().jpeg({ quality: 95, chromaSubsampling: '4:4:4' }).toFile(out);
   const res: PrepResult = { file: out, w, h, aspect: +(w / h).toFixed(4), alpha: hasAlpha, cutoutModel };
   fs.writeFileSync(metaF, JSON.stringify(res));
+  await persist(out); await persist(metaF);
   if (typeof input === 'string' && input !== src) fs.rmSync(input, { force: true });
   return res;
 }

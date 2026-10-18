@@ -2,14 +2,28 @@
 // + فحص التباين (qa.py) + نسخ النشر (PNG كامل + JPG 2160 + JPG 1080 بجودة 97 بدون subsampling) + ورقة معاينة + شريط الكاروسيل.
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import sharp from 'sharp';
 import { ZipArchive } from 'archiver';
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
 import { cfg, SIZES } from './config.js';
 import { brand, engineAssets, fontCSS } from './engine.js';
+import { internalToken } from './auth.js';
+import { BLOB, persistMany } from './storage.js';
 
-export const INTERNAL_TOKEN = crypto.randomBytes(24).toString('hex');
+export const INTERNAL_TOKEN = internalToken();
+/** عنوان السيرفر كما يراه كروم: محلياً localhost، وعلى Vercel دومين الإنتاج */
+const selfUrl = () => process.env.SELF_URL || (process.env.VERCEL
+  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL}` : cfg.selfUrl);
+
+async function launch(): Promise<Browser> {
+  if (process.env.VERCEL) {   // كروم مخصص للسيرفرلس
+    const chromium = (await import('@sparticuz/chromium')).default as any;
+    return puppeteer.launch({ executablePath: await chromium.executablePath(), headless: 'shell',
+      args: [...chromium.args, '--font-render-hinting=none', '--force-color-profile=srgb'] } as any);
+  }
+  return puppeteer.launch({ executablePath: findChrome(), headless: true,
+    args: ['--no-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none', '--force-color-profile=srgb'] });
+}
 
 function findChrome(): string {
   const c = [cfg.chromePath, process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -26,17 +40,16 @@ let pageP: Promise<Page> | null = null;
 let chain: Promise<unknown> = Promise.resolve();
 
 async function getPage(): Promise<Page> {
-  if (!browserP) browserP = puppeteer.launch({
-    executablePath: findChrome(), headless: true,
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none', '--force-color-profile=srgb'],
-  }).then(b => { b.on('disconnected', () => { browserP = null; pageP = null; }); return b; });
+  if (!browserP) browserP = launch().then(b => { b.on('disconnected', () => { browserP = null; pageP = null; }); return b; })
+    .catch(e => { browserP = null; throw e; });
   if (!pageP) pageP = (async () => {
     const b = await browserP!;
     const page = await b.newPage();
-    await page.setExtraHTTPHeaders({ 'x-internal-token': INTERNAL_TOKEN });
+    await page.setExtraHTTPHeaders({ 'x-internal-token': INTERNAL_TOKEN,
+      ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET ? { 'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET } : {}) });
     page.on('pageerror', e => console.error('  [engine]', (e as Error).message));
     await page.setViewport({ width: 1080, height: 1350, deviceScaleFactor: 1 });
-    await page.goto(cfg.selfUrl + '/engine/slide.html', { waitUntil: 'load' });
+    await page.goto(selfUrl() + '/engine/slide.html', { waitUntil: 'load', timeout: 60000 });
     await page.evaluate((css: string) => { document.getElementById('fontcss')!.textContent = css; }, fontCSS());
     await page.evaluate(async () => {
       for (const f of ['Bahij', 'Expo', 'ThSans', 'ThSerif', 'Plex']) for (const w of [400, 500, 700, 800, 900]) await document.fonts.load(`${w} 40px ${f}`);
@@ -183,7 +196,17 @@ export async function exportFull(spec: any, outDir: string, extra: { caption?: s
   fs.writeFileSync(path.join(outDir, 'qc.json'), JSON.stringify({ ...sc, slides: r.map(x => ({ ...x.qc, texts: undefined })) }, null, 1));
   fs.writeFileSync(path.join(outDir, 'spec.json'), JSON.stringify(extra.rawSpec ?? spec, null, 1));
   files.push('qc.json', 'spec.json');
+  if (BLOB) {   // على Vercel: ZIP جاهز بالتخزين + كل الملفات (التحميل برابط موقّع مباشر)
+    await zipToFile(outDir, files, path.join(outDir, 'post.zip')); files.push('post.zip');
+    await persistMany(files.map(f => path.join(outDir, f)));
+  }
   return { files, ...sc };
+}
+export function zipToFile(dir: string, files: string[], out: string) {
+  return new Promise<void>((res, rej) => {
+    const ws = fs.createWriteStream(out); ws.on('close', () => res()); ws.on('error', rej);
+    zipDir(dir, files, ws).catch(rej);
+  });
 }
 
 export function zipDir(dir: string, files: string[], res: NodeJS.WritableStream) {

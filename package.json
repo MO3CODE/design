@@ -8,13 +8,17 @@
     "dev": "concurrently -k -n server,web -c yellow,cyan \"tsx watch server/index.ts\" \"vite\"",
     "build": "vite build",
     "start": "tsx server/index.ts",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "build:vercel": "vite build && node scripts/copy-engine.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": "22.x"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
+    "@sparticuz/chromium": "^153.0.0",
+    "@vercel/blob": "^2.8.2",
+    "@vercel/functions": "^3.10.1",
     "archiver": "^8.0.0",
     "cookie-parser": "^1.4.7",
     "dotenv": "^18.0.7",

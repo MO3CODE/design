@@ -6,6 +6,7 @@ import sharp from 'sharp';
 import { chat, extractJSON, AIError, type Msg, type Part } from './provider.js';
 import { route, canEscalate, classifyFeedback, listModels, type Task, type Route } from './router.js';
 import { record } from '../usage.js';
+import { ensureLocal, persistMany } from '../storage.js';
 import { assetModel, textCall, PLAN_SYS, generateAsset, editPhoto, type PlannedAsset } from './images.js';
 import { systemFor } from './knowledge.js';
 import { getSettings } from '../settings.js';
@@ -67,7 +68,7 @@ async function photoParts(pid: string, post: Post, max = 8): Promise<Part[]> {
   const parts: Part[] = [{ type: 'text', text: '## الصور المرفوعة (استخدم src كما هو)\n' + post.photos.map(p =>
     `- src:"${p.id}" · ${p.name} · ${p.w}×${p.h} · ${p.alpha ? 'PNG شفاف (أصل مقصوص جاهز)' : 'صورة كاملة بخلفية'}${p.source === 'gpt-image' ? ' · مولّد بـ GPT Image (اختاره المستخدم — استخدمه عادي)' : ''}${p.note ? ' · ملاحظة: ' + p.note : ''}`).join('\n') }];
   for (const p of post.photos.slice(0, max)) {
-    try { const t = await thumbForAI(path.join(postDir(pid, post.id), 'photos', p.file), 512); parts.push({ type: 'text', text: `صورة src:"${p.id}"` }, { type: 'image', ...t }); } catch {}
+    try { const local = await ensureLocal(path.join(postDir(pid, post.id), 'photos', p.file)); if (!local) continue; const t = await thumbForAI(local, 512); parts.push({ type: 'text', text: `صورة src:"${p.id}"` }, { type: 'image', ...t }); } catch {}
   }
   parts.push({ type: 'text', text: LIB_TEXT });
   return parts;
@@ -133,7 +134,9 @@ export async function previewAndQC(pid: string, post: Post, spec: any, saveTo?: 
   const files: string[] = [];
   if (saveTo) {
     fs.mkdirSync(saveTo, { recursive: true });
-    for (const x of r) { const f = path.join(saveTo, `${String(x.qc.slide).padStart(2, '0')}.jpg`); fs.writeFileSync(f, x.png); files.push(fileUrl(f)); }
+    const written: string[] = [];
+    for (const x of r) { const f = path.join(saveTo, `${String(x.qc.slide).padStart(2, '0')}.jpg`); fs.writeFileSync(f, x.png); written.push(f); files.push(fileUrl(f)); }
+    await persistMany(written);
   }
   return { qc, images: r.map(x => x.png), files };
 }

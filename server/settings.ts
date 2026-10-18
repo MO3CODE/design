@@ -1,7 +1,6 @@
 // إعدادات قابلة للتعديل من الموقع (data/settings.json) — القيم الافتراضية من .env
-import fs from 'node:fs';
-import path from 'node:path';
-import { DATA, cfg } from './config.js';
+import { cfg } from './config.js';
+import { readJSON, writeJSON, IS_VERCEL } from './storage.js';
 
 export type Tier = 'pro' | 'balanced' | 'fast' | 'vision';
 export interface Settings {
@@ -22,7 +21,8 @@ export interface Settings {
   assetModel: string;
 }
 
-const F = path.join(DATA, 'settings.json');
+const KEY = 'settings.json';
+let saved: Partial<Settings> = {}; let loadedAt = 0;
 const defaults = (): Settings => ({
   provider: (process.env.AI_PROVIDER as Settings['provider']) || (process.env.RADOX_API_KEY || !cfg.anthropicKey ? 'radox' : 'anthropic'),
   radoxKey: process.env.RADOX_API_KEY || '',
@@ -40,28 +40,36 @@ const defaults = (): Settings => ({
 });
 
 let cache: Settings | null = null;
+/** يقرأ الإعدادات المحفوظة (على Vercel من Blob) — يُستدعى أول كل طلب، وكاش قصير */
+export async function loadSettings(maxAgeMs = 15000) {
+  if (Date.now() - loadedAt < maxAgeMs && cache) return cache;
+  saved = (await readJSON<Partial<Settings>>(KEY)) || {};
+  loadedAt = Date.now(); cache = null;
+  return getSettings();
+}
 export function getSettings(): Settings {
   if (cache) return cache;
   const d = defaults();
-  let saved: Partial<Settings> = {};
-  try { saved = JSON.parse(fs.readFileSync(F, 'utf8')); } catch {}
-  // المفاتيح بملف .env تغلب الفاضي بالملف
   cache = { ...d, ...saved, models: { ...d.models, ...(saved.models || {}) } } as Settings;
-  if (!cache.radoxKey) cache.radoxKey = d.radoxKey;
-  if (!cache.anthropicKey) cache.anthropicKey = d.anthropicKey;
+  // المفاتيح: على Vercel من متغيرات البيئة فقط (ما تنحفظ بالتخزين)؛ محلياً .env يغلب الفاضي
+  if (IS_VERCEL || !cache.radoxKey) cache.radoxKey = d.radoxKey;
+  if (IS_VERCEL || !cache.anthropicKey) cache.anthropicKey = d.anthropicKey;
   for (const k of ['openaiKey', 'openaiBaseUrl', 'imageProvider']) delete (cache as any)[k];   // خيار OpenAI انحذف
   return cache;
 }
 
-export function saveSettings(patch: Partial<Settings>) {
+export async function saveSettings(patch: Partial<Settings>) {
+  await loadSettings(0);
   const cur = getSettings();
   const next: Settings = { ...cur, ...patch, models: { ...cur.models, ...(patch.models || {}) } };
   // المفتاح المقنّع من الواجهة ما يكتب فوق الحقيقي
   for (const k of ['radoxKey', 'anthropicKey'] as const) if (patch[k] && /^•+/.test(patch[k]!)) next[k] = cur[k];
-  for (const k of ['openaiKey', 'openaiBaseUrl', 'imageProvider']) delete (next as any)[k];
-  fs.writeFileSync(F, JSON.stringify(next, null, 1));
-  cache = next;
-  return next;
+  const toSave: any = { ...next };
+  for (const k of ['openaiKey', 'openaiBaseUrl', 'imageProvider']) delete toSave[k];
+  if (IS_VERCEL) { delete toSave.radoxKey; delete toSave.anthropicKey; }   // الأسرار ما تنكتب بالتخزين على Vercel
+  await writeJSON(KEY, toSave);
+  saved = toSave; cache = null; loadedAt = Date.now();
+  return getSettings();
 }
 
 const mask = (k: string) => (k ? '••••••••' + k.slice(-4) : '');

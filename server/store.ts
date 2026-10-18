@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { DATA, ENGINE } from './config.js';
+import { BLOB, readJSON, writeJSON, readText, writeText, listKeys, removePrefix } from './storage.js';
 
 export const uid = (n = 10) => crypto.randomBytes(16).toString('base64url').replace(/[-_]/g, '').slice(0, n);
 export const now = () => new Date().toISOString();
@@ -43,53 +44,75 @@ export class HttpError extends Error { constructor(public status: number, msg: s
 
 const cache = new Map<string, Project>();
 const queues = new Map<string, Promise<unknown>>();
+const pkey = (pid: string) => `projects/${safeId(pid)}/project.json`;
+const mkey = (pid: string) => `meta/projects/${safeId(pid)}.json`;
 
-export function listProjects(): Project[] {
-  return fs.readdirSync(PROJ, { withFileTypes: true }).filter(d => d.isDirectory())
-    .map(d => { try { return getProject(d.name); } catch { return null; } })
-    .filter((p): p is Project => !!p)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+/** ملخص المشروع (للقائمة) — ملف صغير منفصل عشان ما نقرأ كل المشاريع */
+const summaryOf = (p: Project) => ({ id: p.id, name: p.name, createdAt: p.createdAt, updatedAt: p.updatedAt, count: p.posts.length,
+  done: p.posts.filter(x => x.state === 'approved').length, inReview: p.posts.filter(x => x.state === 'review').length });
+export type ProjectRow = ReturnType<typeof summaryOf>;
+
+export async function listProjects(): Promise<ProjectRow[]> {
+  const keys = (await listKeys('meta/projects/')).filter(k => k.endsWith('.json'));
+  const rows = await Promise.all(keys.map(k => readJSON<ProjectRow>(k)));
+  if (!BLOB) {   // توافق مع بيانات قديمة بدون ملفات ملخص
+    const have = new Set(rows.filter(Boolean).map(r => r!.id));
+    if (fs.existsSync(PROJ)) for (const d of fs.readdirSync(PROJ, { withFileTypes: true })) {
+      if (!d.isDirectory() || have.has(d.name)) continue;
+      try { const p = await loadProject(d.name); rows.push(summaryOf(p)); await writeJSON(mkey(p.id), summaryOf(p)); } catch {}
+    }
+  }
+  return rows.filter((r): r is ProjectRow => !!r).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export function getProject(pid: string): Project {
-  if (cache.has(pid)) return cache.get(pid)!;
-  const f = path.join(projectDir(pid), 'project.json');
-  if (!fs.existsSync(f)) throw new HttpError(404, 'المشروع غير موجود');
-  const p = JSON.parse(fs.readFileSync(f, 'utf8')) as Project;
+/** يقرأ المشروع من التخزين (على Vercel دايماً أحدث نسخة) ويحطه بالذاكرة */
+export async function loadProject(pid: string): Promise<Project> {
+  const p = await readJSON<Project>(pkey(pid));
+  if (!p) { cache.delete(pid); throw new HttpError(404, 'المشروع غير موجود'); }
   cache.set(pid, p);
   return p;
 }
 
-function writeProject(p: Project) {
-  const dir = projectDir(p.id); fs.mkdirSync(dir, { recursive: true });
-  const f = path.join(dir, 'project.json'), tmp = f + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(p, null, 1)); fs.renameSync(tmp, f);
-  cache.set(p.id, p);
+/** متزامن: من الذاكرة (المسارات تحمّله أول الطلب عبر loadProject) */
+export function getProject(pid: string): Project {
+  const c = cache.get(pid);
+  if (c) return c;
+  if (!BLOB) {
+    const f = path.join(projectDir(pid), 'project.json');
+    if (fs.existsSync(f)) { const p = JSON.parse(fs.readFileSync(f, 'utf8')) as Project; cache.set(pid, p); return p; }
+  }
+  throw new HttpError(404, 'المشروع غير موجود');
 }
 
-/** تعديل متسلسل لكل مشروع — ما يضيع تعديل لو جاء طلبين بنفس الوقت */
+async function writeProject(p: Project) {
+  cache.set(p.id, p);
+  await writeJSON(pkey(p.id), p);
+  await writeJSON(mkey(p.id), summaryOf(p));
+}
+
+/** تعديل متسلسل لكل مشروع — يقرأ أحدث نسخة قبل التعديل (مهم على Vercel: أكثر من جهاز) */
 export function mutate<T>(pid: string, fn: (p: Project) => T | Promise<T>): Promise<T> {
   const prev = queues.get(pid) || Promise.resolve();
   const next = prev.catch(() => {}).then(async () => {
-    const p = getProject(pid);
+    const p = BLOB ? await loadProject(pid) : getProject(pid);
     const r = await fn(p);
-    p.updatedAt = now(); writeProject(p);
+    p.updatedAt = now(); await writeProject(p);
     return r;
   });
   queues.set(pid, next);
   return next;
 }
 
-export function createProject(name: string, posts: Post[], source?: string): Project {
+export async function createProject(name: string, posts: Post[], source?: string): Promise<Project> {
   const p: Project = { id: uid(), name, source, createdAt: now(), updatedAt: now(), posts };
-  writeProject(p);
+  await writeProject(p);
   return p;
 }
 
-export function deleteProject(pid: string) {
-  const dir = projectDir(pid);
+export async function deleteProject(pid: string) {
   cache.delete(pid);
-  fs.rmSync(dir, { recursive: true, force: true });
+  await removePrefix(`projects/${safeId(pid)}/`);
+  await removePrefix(mkey(pid));
 }
 
 export function findPost(p: Project, postId: string): Post {
@@ -111,18 +134,25 @@ export function blankPost(n: number, fields: Partial<Post>): Post {
 }
 
 /* ── سجل الذوق: يبدأ من نسخة المهارة ويتطور من الموقع ── */
-const TASTE = path.join(DATA, 'taste-log.md');
-export function getTaste(): string {
-  if (!fs.existsSync(TASTE)) fs.copyFileSync(path.join(ENGINE, 'knowledge', 'taste-log.md'), TASTE);
-  return fs.readFileSync(TASTE, 'utf8');
+let taste: { md: string; at: number } | null = null;
+export async function loadTaste(maxAgeMs = 15000) {
+  if (taste && Date.now() - taste.at < maxAgeMs) return taste.md;
+  const md = (await readText('taste-log.md')) ?? fs.readFileSync(path.join(ENGINE, 'knowledge', 'taste-log.md'), 'utf8');
+  taste = { md, at: Date.now() };
+  return md;
 }
-export function setTaste(md: string) { fs.writeFileSync(TASTE, md); }
-export function appendTaste(kind: 'approved' | 'rejected', text: string, source: string) {
-  const md = getTaste();
+export function getTaste(): string {
+  return taste?.md ?? ((!BLOB && fs.existsSync(path.join(DATA, 'taste-log.md'))) ? fs.readFileSync(path.join(DATA, 'taste-log.md'), 'utf8')
+    : fs.readFileSync(path.join(ENGINE, 'knowledge', 'taste-log.md'), 'utf8'));
+}
+export async function setTaste(md: string) { taste = { md, at: Date.now() }; await writeText('taste-log.md', md); }
+export async function appendTaste(kind: 'approved' | 'rejected', text: string, source: string) {
+  const md = await loadTaste(0);
+  const one = text.replace(/\n/g, ' ');
   const line = kind === 'approved'
-    ? `| ${source} | ${text.replace(/\|/g, '/').replace(/\n/g, ' ')} | الموقع ${now().slice(0, 10)} |`
-    : `- ${text.replace(/\n/g, ' ')} (${source} — الموقع ${now().slice(0, 10)})`;
+    ? `| ${source} | ${one.replace(/\|/g, '/')} | الموقع ${now().slice(0, 10)} |`
+    : `- ${one} (${source} — الموقع ${now().slice(0, 10)})`;
   const marker = kind === 'approved' ? '\n## ❌ مرفوض' : '\n## ⚠';
   const i = md.indexOf(marker);
-  setTaste(i < 0 ? md + '\n' + line + '\n' : md.slice(0, i).trimEnd() + '\n' + line + '\n' + md.slice(i));
+  await setTaste(i < 0 ? `${md}\n${line}\n` : `${md.slice(0, i).trimEnd()}\n${line}\n${md.slice(i)}`);
 }

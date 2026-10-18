@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getSettings } from '../settings.js';
 import { record } from '../usage.js';
+import { ensureLocal, persist } from '../storage.js';
 import { chat, extractJSON, type Msg } from './provider.js';
 import { listModels, resolveTier } from './router.js';
 import { probe } from '../photos.js';
@@ -71,7 +72,8 @@ async function imageAPI(c: ImgCall, pid: string, postId: string, task: string) {
     const fd = new FormData();
     fd.append('model', s.imageModel); fd.append('prompt', c.prompt); fd.append('n', String(c.n || 1)); fd.append('size', c.size);
     fd.append('quality', c.quality || s.imageQuality || 'high'); fd.append('output_format', 'png'); if (c.transparent) fd.append('background', 'transparent');
-    for (const f of c.inputs.slice(0, 4)) {
+    for (const f0 of c.inputs.slice(0, 4)) {
+      const f = await ensureLocal(f0); if (!f) continue;
       const ext = path.extname(f).slice(1).toLowerCase().replace('jpg', 'jpeg') || 'png';
       fd.append('image[]', new Blob([fs.readFileSync(f)], { type: `image/${ext}` }), path.basename(f));
     }
@@ -102,7 +104,7 @@ async function savePhotos(pid: string, postId: string, bufs: Buffer[], meta: Par
   const out: Photo[] = [];
   for (const [i, b] of bufs.entries()) {
     const id = uid(8), file = `${id}.png`, f = path.join(dir, file);
-    fs.writeFileSync(f, b);
+    fs.writeFileSync(f, b); await persist(f);
     const info = await probe(f);
     const { baseName, ...rest } = meta;
     out.push({ id, name: `${baseName}${bufs.length > 1 ? '_' + (i + 1) : ''}.png`, file, ...info, bytes: b.length, uploadedAt: now(), source: 'gpt-image', ...rest });

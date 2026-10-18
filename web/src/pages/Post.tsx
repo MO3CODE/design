@@ -53,17 +53,27 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
     readers.current?.abort();
     const ac = new AbortController(); readers.current = ac;
     setBusy(true); setLog([]);
-    let kind = '';
+    let kind = '', count = 0, terminal = false, poll = false;
     const push = (e: any) => setLog(l => [...l, { ...e, at: e.at || Date.now() }]);
+    const onEv = (ev: any) => {
+      if (ev.type === 'job') { kind = ev.job?.kind || kind; poll = !!ev.poll; if (ev.job?.status === 'queued' || ev.job?.status === 'running') setBusy(true); return; }
+      count++;
+      if (ev.type === 'done' || ev.type === 'error') terminal = true;
+      if (ev.type === 'queued') push({ type: 'step', text: `بالطابور — قبله ${Math.max(0, (ev.position || 1) - 1)} مهمة` });
+      if (['step', 'route', 'usage', 'review', 'log'].includes(ev.type)) push(ev);
+      if (ev.type === 'qc') push({ type: 'qc', score: ev.score });
+      if (ev.type === 'version') { setViewId(ev.version.id); load(); }
+      if (ev.type === 'asset') load();
+    };
     try {
-      const r = await open(ev => {
-        if (ev.type === 'job') { kind = ev.job?.kind || ''; if (ev.job?.status === 'queued' || ev.job?.status === 'running') setBusy(true); }
-        if (ev.type === 'queued') push({ type: 'step', text: `بالطابور — قبله ${Math.max(0, (ev.position || 1) - 1)} مهمة` });
-        if (['step', 'route', 'usage', 'review', 'log'].includes(ev.type)) push(ev);
-        if (ev.type === 'qc') push({ type: 'qc', score: ev.score });
-        if (ev.type === 'version') { setViewId(ev.version.id); load(); }
-        if (ev.type === 'asset') load();
-      }, ac.signal);
+      let r = await open(onEv, ac.signal);
+      // على Vercel: السيرفر يرجّع اللي صار ويقفل — نسحب الجديد كل ثانية ونص لين تخلص المهمة
+      while (poll && !terminal && !ac.signal.aborted) {
+        await new Promise(res => setTimeout(res, 1500));
+        if (ac.signal.aborted) break;
+        const r2 = await stream(`${url}/job/stream?since=${count}`, null, onEv, ac.signal);
+        if (r2 !== undefined) r = r2;
+      }
       if (!ac.signal.aborted) { push({ type: 'done', text: doneText || DONE_TEXT[kind] || 'تم' }); await load(); }
       return r;
     } catch (e: any) {
@@ -122,7 +132,7 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
               { v: 'photos', label: <><Images size={14} className="inline -mt-0.5 ml-1" />الصور ({post.photos.length})</> }]} />
           </div>
           <div className="flex-1 overflow-auto p-4">
-            {tab === 'content' ? <ContentPanel pid={pid} post={post} onChange={setPost} /> : <PhotosPanel pid={pid} post={post} onChange={setPost} cutout={health?.cutout} onGenerate={() => setGen({ open: true })} onEditAsset={setEditA} />}
+            {tab === 'content' ? <ContentPanel pid={pid} post={post} onChange={setPost} /> : <PhotosPanel pid={pid} post={post} onChange={setPost} cutout={health?.cutout} direct={health?.mode === 'vercel'} onGenerate={() => setGen({ open: true })} onEditAsset={setEditA} />}
           </div>
         </aside>
 

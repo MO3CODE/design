@@ -60,7 +60,7 @@ export function AssetEditor({ open, onClose, pid, post, photo, inUse, onEdit, on
     return post.photos.filter(p => p.id === root || p.asset?.root === root).sort((a, b) => (a.asset?.rev || 1) - (b.asset?.rev || 1));
   }, [cur, post.photos]);
   if (!cur) return null;
-  const src = (p: Photo) => `/files/${pid}/posts/${post.id}/photos/${p.file}`;
+  const src = (p: Photo) => `/files/projects/${pid}/posts/${post.id}/photos/${p.file}`;
   const usedNow = chain.find(p => inUse(p.id));
   return (
     <Modal open={open} onClose={onClose} wide title={<span className="flex items-center gap-2"><PencilLine size={18} className="text-gold-deep" /> تعديل الأصل</span>}
