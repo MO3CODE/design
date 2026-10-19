@@ -28,8 +28,8 @@ export const SlideFrame = memo(function SlideFrame({ spec, index, width, onQC, c
       doc.getElementById('fontcss')!.textContent = b.fontCSS;
       const fonts = (doc as any).fonts as FontFaceSet;
       try {
-        await Promise.all(['Expo', 'ThSans', 'ThSerif', 'Plex'].flatMap(ff => [400, 700].map(w => fonts.load(`${w} 40px ${ff}`))));
-        await fonts.load('40px tabler'); await fonts.ready;
+        await Promise.allSettled(['Expo', 'ThSans', 'ThSerif', 'Plex'].flatMap(ff => [400, 700].map(w => fonts.load(`${w} 40px ${ff}`))));
+        await fonts.load('40px tabler').catch(() => {}); await fonts.ready;
       } catch {}
       setReady(true);
     };

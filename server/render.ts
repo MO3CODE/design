@@ -51,10 +51,16 @@ async function getPage(): Promise<Page> {
     await page.setViewport({ width: 1080, height: 1350, deviceScaleFactor: 1 });
     await page.goto(selfUrl() + '/engine/slide.html', { waitUntil: 'load', timeout: 60000 });
     await page.evaluate((css: string) => { document.getElementById('fontcss')!.textContent = css; }, fontCSS());
-    await page.evaluate(async () => {
-      for (const f of ['Bahij', 'Expo', 'ThSans', 'ThSerif', 'Plex']) for (const w of [400, 500, 700, 800, 900]) await document.fonts.load(`${w} 40px ${f}`);
-      await document.fonts.load('40px tabler'); await document.fonts.ready;
+    // تحميل الخطوط مسبقاً — أي خط ناقص ما يوقف الرسم (المحرك يرجع لخط بديل)
+    const missing = await page.evaluate(async () => {
+      const bad: string[] = [];
+      for (const f of ['Bahij', 'Expo', 'ThSans', 'ThSerif', 'Plex', 'Cairo']) for (const w of [400, 500, 700, 800, 900])
+        await document.fonts.load(`${w} 40px ${f}`).catch(() => { if (!bad.includes(f)) bad.push(f); });
+      await document.fonts.load('40px tabler').catch(() => bad.push('tabler'));
+      await document.fonts.ready.catch(() => {});
+      return bad;
     });
+    if (missing.length) console.warn('[render] خطوط ناقصة (بديل تلقائي):', missing.join(', '));
     return page;
   })().catch(e => { pageP = null; throw e; });
   return pageP;

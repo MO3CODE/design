@@ -222,11 +222,20 @@ export async function designPost(pid: string, postId: string, emit: Emit, opts: 
 async function finish(pid: string, post: Post, spec: any, meta: { concept?: string; notes: string[]; source: Version['source']; label?: string; feedback?: string }, emit: Emit, fixRounds = 2) {
   const vid = uid(); const dir = path.join(postDir(pid, post.id), 'renders', vid);
   emit({ type: 'step', text: 'رسم المعاينة والفحص الآلي' });
-  let { spec: s1, pv } = await fixLoop(pid, post, spec, emit, fixRounds, dir);
-  if (meta.source !== 'manual') ({ spec: s1, pv } = await reviewLoop(pid, post, s1, pv, emit, dir, meta.notes));
+  let s1 = spec, pv: Awaited<ReturnType<typeof previewAndQC>> | null = null;
+  try {
+    ({ spec: s1, pv } = await fixLoop(pid, post, spec, emit, fixRounds, dir));
+    if (meta.source !== 'manual') ({ spec: s1, pv } = await reviewLoop(pid, post, s1, pv, emit, dir, meta.notes));
+  } catch (e: any) {
+    if (e?.name === 'CancelledError' || /أُلغيت/.test(e?.message || '')) throw e;
+    // الرسم على السيرفر فشل — ما نضيّع التصميم اللي كتبه الموديل: ننحفظه والمعاينة الحية بالمتصفح تعرضه
+    console.error('[finish] render failed, saving spec anyway:', e?.message);
+    emit({ type: 'log', level: 'warn', text: `تعذّر رسم المعاينة على السيرفر (${String(e?.message || e).slice(0, 120)}) — انحفظ التصميم، والمعاينة الحية تعرضه` });
+  }
+  const qc = pv?.qc || { score: 0, errors: ['ما انفحص على السيرفر — افحص المعاينة بعينك'], warnings: [], lint: [] };
   const ver = await saveVersion(pid, post.id, { source: meta.source, label: meta.label, concept: meta.concept, notes: meta.notes, feedback: meta.feedback,
-    spec: s1, qc: pv.qc, preview: pv.files[0] }, vid);
-  emit({ type: 'version', version: ver, files: pv.files });
+    spec: s1, qc, preview: pv?.files[0] }, vid);
+  emit({ type: 'version', version: ver, files: pv?.files || [] });
   return ver;
 }
 

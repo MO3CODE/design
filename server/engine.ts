@@ -90,6 +90,7 @@ export function fontCSS() {
   const fam: Record<string, string> = { bahij: 'Bahij', plex: 'Plex', cairo: 'Cairo', expo: 'Expo', thsans: 'ThSans', thserif: 'ThSerif' };
   let css = '';
   for (const [k, ws] of Object.entries<any>(Ax.fonts)) for (const [w, f] of Object.entries<string>(ws))
+    if (!bundled(f) && !uploadedFonts.has(f)) continue; else   // خط تجاري مو مرفوع بعد → نتركه (بديل تلقائي) بدل طلب يفشل
     css += `@font-face{font-family:'${fam[k]}';font-weight:${w};src:url("${fontUrl(f)}")}\n`;
   css += `@font-face{font-family:'tabler';src:url("${Ax.icons.regular}")}@font-face{font-family:'tabler-thin';src:url("${Ax.icons.thin}")}@font-face{font-family:'tabler-f';src:url("${Ax.icons.filled}")}
 .ti{font-family:'tabler';font-style:normal;line-height:1;display:inline-block}.tif{font-family:'tabler-f';font-style:normal;line-height:1;display:inline-block}.tit{font-family:'tabler-thin';font-style:normal;line-height:1;display:inline-block}`;
