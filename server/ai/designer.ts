@@ -7,7 +7,9 @@ import { chat, extractJSON, AIError, type Msg, type Part } from './provider.js';
 import { route, canEscalate, classifyFeedback, listModels, type Task, type Route } from './router.js';
 import { record } from '../usage.js';
 import { ensureLocal, persistMany } from '../storage.js';
-import { assetModel, textCall, PLAN_SYS, generateAsset, editPhoto, type PlannedAsset } from './images.js';
+import { assetModel, textCall, PLAN_SYS, generateAsset, editPhoto, imagesAvailable, type PlannedAsset } from './images.js';
+import { drawElement, editDrawn } from './draw.js';
+const NO_IMG = '\n\n⚠ توليد الصور غير متاح حالياً: استخدم kind:"drawn" فقط (عنصر مرسوم بالكود بـ Claude — أشياء فقط، بدون أشخاص).';
 import { systemFor } from './knowledge.js';
 import { getSettings } from '../settings.js';
 import { draftSpec } from '../calendar.js';
@@ -66,7 +68,7 @@ const LIB_TEXT = '## مكتبة الصور المشتركة (متاحة دائم
 async function photoParts(pid: string, post: Post, max = 8): Promise<Part[]> {
   if (!post.photos.length) return [{ type: 'text', text: '## الصور المرفوعة\nلا يوجد — صمّم بدون أصل (عناصر مرسومة/سهم الهوية/جداول/مكتبة الصور) واكتب photo_requests.\n\n' + LIB_TEXT }];
   const parts: Part[] = [{ type: 'text', text: '## الصور المرفوعة (استخدم src كما هو)\n' + post.photos.map(p =>
-    `- src:"${p.id}" · ${p.name} · ${p.w}×${p.h} · ${p.alpha ? 'PNG شفاف (أصل مقصوص جاهز)' : 'صورة كاملة بخلفية'}${p.source === 'gpt-image' ? ' · مولّد بـ GPT Image (اختاره المستخدم — استخدمه عادي)' : ''}${p.note ? ' · ملاحظة: ' + p.note : ''}`).join('\n') }];
+    `- src:"${p.id}" · ${p.name} · ${p.w}×${p.h} · ${p.alpha ? 'PNG شفاف (أصل مقصوص جاهز)' : 'صورة كاملة بخلفية'}${p.source === 'gpt-image' ? ' · مولّد بـ GPT Image (اختاره المستخدم — استخدمه عادي)' : ''}${p.source === 'code-drawn' ? ' · عنصر مرسوم بالكود بأسلوب الهوية (PNG شفاف — عامله كأصل جاهز)' : ''}${p.note ? ' · ملاحظة: ' + p.note : ''}`).join('\n') }];
   for (const p of post.photos.slice(0, max)) {
     try { const local = await ensureLocal(path.join(postDir(pid, post.id), 'photos', p.file)); if (!local) continue; const t = await thumbForAI(local, 512); parts.push({ type: 'text', text: `صورة src:"${p.id}"` }, { type: 'image', ...t }); } catch {}
   }
@@ -74,11 +76,21 @@ async function photoParts(pid: string, post: Post, max = 8): Promise<Part[]> {
   return parts;
 }
 
+/** الخط ثابت على خطوط المهارة (Expo Arabic + ثمانية): أي خط ثاني يرجع لـ expo — إلا لو المستخدم طلبه بالاسم */
+const SKILL_FONTS = new Set(['expo', 'thmanyah', 'mix', 'serif']);
+export function pinFonts(spec: any, asked = '') {
+  const ok = (f: any) => SKILL_FONTS.has(f) || (f === 'bahij' && /bahij|بهيج/i.test(asked)) || (f === 'plex' && /plex|بلكس/i.test(asked));
+  if (!spec || typeof spec !== 'object') return spec;
+  if (!ok(spec.font)) spec.font = 'expo';
+  for (const s of spec.slides || []) if (s && s.font !== undefined && !ok(s.font)) delete s.font;
+  return spec;
+}
+
 const validateSpec = (j: any) => {
   const spec = j.spec || j;
   if (!spec || !Array.isArray(spec.slides) || !spec.slides.length) throw new Error('spec بدون شرائح');
   for (const s of spec.slides) if (!s || typeof s !== 'object' || !s.type) throw new Error('شريحة بدون type');
-  return { concept: String(j.concept || ''), notes: arr(j.notes), photo_requests: arr(j.photo_requests), spec };
+  return { concept: String(j.concept || ''), notes: arr(j.notes), photo_requests: arr(j.photo_requests), draw: Array.isArray(j.draw) ? j.draw : [], spec };
 };
 const arr = (v: any): string[] => (Array.isArray(v) ? v.map(String) : v ? [String(v)] : []);
 
@@ -113,8 +125,39 @@ const CONTRACT_DESIGN = `## المطلوب
 1) افهم المحتوى: الألم/الوعد/الإجراء → عاطفة واحدة + استعارة واحدة (المنهج الإبداعي).
 2) اختر preset المناسب لنوع المنشور، واللون حسب الخدمة، ووزّع النص الحرفي على الشرائح.
 3) استخدم الصور المرفوعة بأفضل مكان (أصل بطل، مشهد كامل، خلفية المملكة…) — كل أصل مرة وحدة.
+4) **«نولّد الأشياء ونصوّر الناس»**: لو الفكرة تحتاج **شيء** (بوصلة، مفتاح، ختم، ملف، لوح مشبك، أوراق، تقويم، ميزان، جوال…) وما فيه صورة مرفوعة
+   تناسبه، اطلب رسمه بالكود: أضف بـ draw عنصر {id,description,w,h} (وصف عربي دقيق للشكل والمادة والزاوية — بدون نص داخله) واستخدم
+   بالـ spec «src:"draw:<id>"» مكان الصورة (مثل photo:{src:"draw:d1", area:"cutout", side:"center", h:0.5, treat:"none", grain:0}).
+   عنصرين كحد أقصى، وكل عنصر بشريحة وحدة. الأشخاص **ما ينرسمون** — لو الفكرة تحتاج شخص اكتبه بـ photo_requests.
+5) **الخط ثابت**: font:"expo" (Expo Arabic) افتراضياً، أو "thmanyah"/"mix"/"serif" للأسلوب التحريري — لا Plex ولا Cairo ولا أي خط ثاني.
 أرجع JSON بهذا الشكل بالضبط:
-{"concept":"سطرين: الفكرة والعاطفة والاستعارة","notes":["قرارات التصميم والتصحيحات الإملائية"],"photo_requests":["لقطة حقيقية مطلوبة لو ناقص شي"],"spec":{"name":"…","preset":"…","theme":"…","caption":"…","hashtags":["#…"],"slides":[{…}]}}`;
+{"concept":"سطرين: الفكرة والعاطفة والاستعارة","notes":["قرارات التصميم والتصحيحات الإملائية"],"photo_requests":["لقطة حقيقية مطلوبة لو ناقص شي"],"draw":[{"id":"d1","description":"…","w":900,"h":900}],"spec":{"name":"…","preset":"…","theme":"…","caption":"…","hashtags":["#…"],"slides":[{…}]}}`;
+
+/** عناصر «draw:<id>» بالـ spec → Claude يرسمها بالكود وتنحط مكانها كصور للمنشور */
+async function resolveDraws(pid: string, postId: string, spec: any, draws: any[], emit: Emit): Promise<string[]> {
+  const list = (Array.isArray(draws) ? draws : []).filter(d => d && d.id && d.description).slice(0, 2);
+  const used = JSON.stringify(spec);
+  const todo = list.filter(d => used.includes(`"draw:${d.id}"`));
+  if (!todo.length) return [];
+  const made = await Promise.allSettled(todo.map(d => drawElement(pid, postId, { description: String(d.description), w: Number(d.w) || undefined, h: Number(d.h) || undefined,
+    review: false, pro: true, emit, context: `${spec.theme || ''}` })));
+  const map: Record<string, string> = {}; const notes: string[] = [];
+  made.forEach((m, i) => {
+    if (m.status === 'fulfilled') { map[`draw:${todo[i].id}`] = m.value.id; notes.push(`✏️ مرسوم بالكود (Claude): ${todo[i].description}`); }
+    else emit({ type: 'log', level: 'warn', text: `ما قدرت أرسم «${todo[i].description}»: ${(m.reason as Error)?.message || m.reason}` });
+  });
+  // نبدّل المراجع؛ واللي فشل رسمه نشيل الصورة اللي تشير له (التصميم يكمل بدونه)
+  const walk = (o: any): any => {
+    if (Array.isArray(o)) return o.map(walk);
+    if (o && typeof o === 'object') {
+      if (typeof o.src === 'string' && o.src.startsWith('draw:')) return map[o.src] ? { ...o, src: map[o.src] } : null;
+      const out: any = {}; for (const [k, v] of Object.entries(o)) { const w = walk(v); if (w !== null) out[k] = w; } return out;
+    }
+    return o;
+  };
+  Object.assign(spec, walk(spec));
+  return notes;
+}
 
 const CONTRACT_PATCH = `أرجع JSON فقط:
 {"summary":"وش عدّلت بسطر","ops":[{"op":"set","path":"slides[0].title_fs","value":72},{"op":"merge","path":"slides[1].photo","value":{"h":0.55}},{"op":"remove","path":"slides[2].glass_tag"},{"op":"insert","path":"slides[3]","value":{…}}]}
@@ -216,10 +259,13 @@ export async function designPost(pid: string, postId: string, emit: Emit, opts: 
   ];
   emit({ type: 'step', text: 'الفكرة وكتابة التصميم' });
   const { out, route: r } = await call('design', { pid, preset: draft.preset, post: postId, maxTokens: 40000, validate: validateSpec, messages: [{ role: 'user', content }] }, emit);
-  return finish(pid, post, normalize(out.spec, post, draft), { concept: out.concept, notes: [...out.notes, ...out.photo_requests.map(x => '📷 مطلوب: ' + x)], source: 'ai', label: r.model }, emit);
+  const spec = normalize(out.spec, post, draft);
+  const drawn = await resolveDraws(pid, postId, spec, out.draw, emit);
+  return finish(pid, findPost(getProject(pid), postId), spec, { concept: out.concept, notes: [...out.notes, ...drawn, ...out.photo_requests.map(x => '📷 مطلوب: ' + x)], source: 'ai', label: r.model }, emit);
 }
 
 async function finish(pid: string, post: Post, spec: any, meta: { concept?: string; notes: string[]; source: Version['source']; label?: string; feedback?: string }, emit: Emit, fixRounds = 2) {
+  if (meta.source !== 'manual') pinFonts(spec, `${meta.feedback || ''} ${post.notes || ''}`);
   const vid = uid(); const dir = path.join(postDir(pid, post.id), 'renders', vid);
   emit({ type: 'step', text: 'رسم المعاينة والفحص الآلي' });
   let s1 = spec, pv: Awaited<ReturnType<typeof previewAndQC>> | null = null;
@@ -254,6 +300,7 @@ export async function revisePost(pid: string, postId: string, feedback: string, 
       { type: 'text', text: `## النسخة الحالية\n${JSON.stringify(base.spec)}\n\n## سجل المحادثة\n${history || '—'}\n\n## ملاحظة المستخدم (طبّقها بدقة)\n${feedback}\n\n${CONTRACT_DESIGN}` }];
     const { out } = await call('revise_major', { pid, preset: base.spec.preset, post: postId, maxTokens: 40000, validate: validateSpec, messages: [{ role: 'user', content }] }, emit);
     spec = normalize(out.spec, post, base.spec); summary = out.concept;
+    const drawn = await resolveDraws(pid, postId, spec, out.draw, emit); if (drawn.length) summary += ' · ' + drawn.join(' · ');
   } else {
     const { out } = await call(task, { pid, post: postId, maxTokens: task === 'revise_minor' ? 8000 : 14000, validate: validateOps, messages: [{ role: 'user', content:
       `## المحتوى الحرفي (مرجع)\n${post.design}\n\n## spec الحالي\n${JSON.stringify(base.spec)}\n\n## سجل المحادثة\n${history || '—'}\n\n## ملاحظة المستخدم\n${feedback}\n\n${CONTRACT_PATCH}` }] }, emit);
@@ -279,7 +326,9 @@ export async function variantsPost(pid: string, postId: string, count: number, e
     const content: Part[] = [{ type: 'text', text: postBrief(post) }, ...photos,
       { type: 'text', text: `${base ? `## النسخة الحالية (لا تكررها — اعمل بديل)\n${JSON.stringify(base.spec)}\n\n` : `## مسودة آلية\n${JSON.stringify(draft)}\n\n`}## ${dir}\n\n${CONTRACT_DESIGN}` }];
     const { out, route: r } = await call('variant', { pid, preset: draft.preset, post: postId, maxTokens: 32000, validate: validateSpec, messages: [{ role: 'user', content }] }, sub);
-    return finish(pid, findPost(getProject(pid), postId), normalize(out.spec, post, draft), { concept: out.concept, notes: out.notes, source: 'variant', label: `خيار ${i + 1} · ${r.model}` }, sub, 1);
+    const vspec = normalize(out.spec, post, draft);
+    const drawn = await resolveDraws(pid, postId, vspec, out.draw, sub);
+    return finish(pid, findPost(getProject(pid), postId), vspec, { concept: out.concept, notes: [...out.notes, ...drawn], source: 'variant', label: `خيار ${i + 1} · ${r.model}` }, sub, 1);
   });
   const res = await Promise.allSettled(jobs);
   return res.filter(r => r.status === 'fulfilled').map(r => (r as PromiseFulfilledResult<Version>).value);
@@ -317,19 +366,23 @@ export async function autoAssetsPost(pid: string, postId: string, emit: Emit, op
   emit({ type: 'step', text: 'تحديد الأصل المناسب' });
   const model = await assetModel();
   emit({ type: 'route', task: 'asset_plan', tier: 'asset', model, reason: 'قراءة التصميم' });
-  const plan = await textCall('asset_plan', PLAN_SYS, [{ role: 'user', content: [
+  const canImage = await imagesAvailable();
+  const plan = await textCall('asset_plan', PLAN_SYS + (canImage ? '' : NO_IMG), [{ role: 'user', content: [
     { type: 'text', text: `${postBrief(post)}\n\n## spec الحالي\n${JSON.stringify(base.spec)}\n\n## الصور الموجودة\n${post.photos.map(p => `- ${p.id} · ${p.name}${p.alpha ? ' (شفاف)' : ''}`).join('\n') || '—'}` },
     ...imgs,
     { type: 'text', text: `المطلوب: ${want}${opts.slides?.length ? ` · الشرائح: ${opts.slides.join('، ')}` : ''}${opts.note ? `\nتوجيه المستخدم: ${opts.note}` : ''}` },
   ] }], pid, postId, 8000);
   const assets: PlannedAsset[] = (Array.isArray(plan.assets) ? plan.assets : []).slice(0, 3)
     .filter((a: any) => a && a.prompt && Number(a.slide) >= 1 && Number(a.slide) <= (base.spec.slides || []).length)
-    .map((a: any) => ({ ...a, slide: Number(a.slide), kind: a.kind === 'layer' ? 'layer' : 'element', field: a.field === 'bg_photo' || a.kind === 'layer' ? 'bg_photo' : 'photo', value: a.value || {} }));
+    .map((a: any) => ({ ...a, slide: Number(a.slide), kind: a.kind === 'layer' ? 'layer' : a.kind === 'drawn' || !canImage ? 'drawn' : 'element',
+      field: a.field === 'bg_photo' || a.kind === 'layer' ? 'bg_photo' : 'photo', value: a.value || {} }))
+    .filter((a: any) => a.kind !== 'layer' || canImage);
   if (!assets.length) { emit({ type: 'log', level: 'warn', text: 'المدير الفني شاف إن التصميم ما يحتاج أصول إضافية' }); return null; }
-  for (const a of assets) emit({ type: 'step', text: `شريحة ${a.slide}: ${a.kind === 'layer' ? 'طبقة خلفية شفافة' : 'عنصر'} — ${a.description}` });
+  for (const a of assets) emit({ type: 'step', text: `شريحة ${a.slide}: ${a.kind === 'layer' ? 'طبقة خلفية شفافة' : a.kind === 'drawn' ? 'عنصر مرسوم بالكود' : 'عنصر'} — ${a.description}` });
 
   let spec = clone(base.spec); const notes: string[] = [];
   const made = await Promise.allSettled(assets.map(async a => {
+    if ((a.kind as string) === 'drawn') return { a, p: await drawElement(pid, postId, { description: a.description, review: true, pro: true, emit }) };
     emit({ type: 'step', text: `GPT Image يرسم: ${a.description}` });
     const p = await generateAsset(pid, postId, a);
     return { a, p };
@@ -340,16 +393,19 @@ export async function autoAssetsPost(pid: string, postId: string, emit: Emit, op
     const sl = spec.slides[a.slide - 1];
     sl[a.field] = { ...(a.field === 'photo' ? { area: 'cutout', side: 'center', treat: 'none', grain: 0 } : { treat: 'none', grain: 0, blend: 'normal', opacity: 0.9, pos: 'center bottom', size: '100% auto', fade: 'top' }),
       ...a.value, src: p.id };
-    notes.push(`🖼 شريحة ${a.slide}: ${a.kind === 'layer' ? 'طبقة خلفية' : 'عنصر'} مولّد — ${a.why || a.description}`);
+    notes.push(`🖼 شريحة ${a.slide}: ${a.kind === 'layer' ? 'طبقة خلفية' : (a.kind as string) === 'drawn' ? 'عنصر مرسوم بالكود' : 'عنصر'} — ${a.why || a.description}`);
   }
-  if (!notes.length) throw new Error('ما قدرت أولّد أي أصل — RadoxAI لسا ما فعّل توليد الصور، جرّب «اختبر رسم الصور» بالإعدادات');
-  return finish(pid, findPost(getProject(pid), postId), spec, { notes, source: 'ai', label: `أصول GPT Image على v${base.n}` }, emit, 1);
+  if (!notes.length) throw new Error('ما قدرت أجهّز أي أصل — راجع السجل');
+  return finish(pid, findPost(getProject(pid), postId), spec, { notes, source: 'ai', label: `أصول تلقائية على v${base.n}` }, emit, 1);
 }
 
 /** تعديل أصل بتعليمات عربية، واستبداله بالتصميم الحالي (نسخة جديدة) */
 export async function editAssetPost(pid: string, postId: string, photoId: string, instruction: string, emit: Emit, apply = true) {
-  emit({ type: 'step', text: 'GPT Image يعدّل نفس الأصل' });
-  const np = await editPhoto(pid, postId, photoId, instruction);
+  const ph = findPost(getProject(pid), postId).photos.find(x => x.id === photoId);
+  if (!ph) throw new Error('الصورة غير موجودة');
+  let np;
+  if (ph.source === 'code-drawn') np = await editDrawn(pid, postId, ph, instruction, emit);   // مرسوم بالكود → Claude يعدّل نفس الكود
+  else { emit({ type: 'step', text: 'GPT Image يعدّل نفس الأصل' }); np = await editPhoto(pid, postId, photoId, instruction); }
   emit({ type: 'asset', photo: np });
   const post = findPost(getProject(pid), postId);
   const base = currentVersion(post);

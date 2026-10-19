@@ -222,4 +222,26 @@ export function zipDir(dir: string, files: string[], res: NodeJS.WritableStream)
   return z.finalize();
 }
 
+/** يرسم عنصر HTML/SVG مستقل (عنصر مرسوم بالكود) بخلفية شفافة — بدقة عالية، وبدون أي طلبات خارج السيرفر */
+export function renderElementHTML(html: string, w: number, h: number, scale = 3): Promise<Buffer> {
+  return queued(async () => {
+    if (!browserP) await getPage();
+    const b = await browserP!;
+    const page = await b.newPage();
+    try {
+      const base = selfUrl();
+      await page.setExtraHTTPHeaders({ 'x-internal-token': INTERNAL_TOKEN });
+      await page.setRequestInterception(true);
+      page.on('request', r => { const u = r.url(); (u.startsWith(base) || u.startsWith('data:') || u === 'about:blank') ? r.continue() : r.abort(); });
+      await page.setViewport({ width: w, height: h, deviceScaleFactor: scale });
+      await page.goto(base + '/engine/slide.html', { waitUntil: 'load', timeout: 60000 });   // نفس الأصل → الخطوط والأصول تشتغل
+      await page.setContent(`<!doctype html><html dir="rtl"><head><meta charset="utf-8"><base href="${base}/"><style>${fontCSS()}
+html,body{margin:0;padding:0;width:${w}px;height:${h}px;overflow:hidden;background:transparent}
+#el{position:relative;width:${w}px;height:${h}px}</style></head><body><div id="el">${html}</div></body></html>`, { waitUntil: 'load', timeout: 60000 });
+      await page.evaluate(async () => { await document.fonts.ready.catch(() => {}); await new Promise(r => setTimeout(r, 150)); });
+      return Buffer.from(await page.screenshot({ type: 'png', omitBackground: true, clip: { x: 0, y: 0, width: w, height: h } }));
+    } finally { await page.close().catch(() => {}); }
+  });
+}
+
 export async function closeRenderer() { if (browserP) (await browserP).close().catch(() => {}); }

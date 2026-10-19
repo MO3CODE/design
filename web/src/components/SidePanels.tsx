@@ -113,6 +113,7 @@ export function PhotosPanel({ pid, post, onChange, cutout, direct, onGenerate, o
             <div className={`relative aspect-square ${ph.alpha ? 'checker' : 'bg-ivory-2'}`}>
               <img src={src(ph.file)} alt="" className={`w-full h-full ${ph.alpha ? 'object-contain p-2' : 'object-cover'}`} loading="lazy" />
               <span className={`chip absolute top-1.5 right-1.5 ${ph.alpha ? 'bg-emerald-700/85 text-white' : 'bg-graphite/75 text-ivory'}`}>{ph.alpha ? <><Layers size={11} />مقصوص</> : 'صورة'}</span>
+              {ph.source === 'code-drawn' && <span className="chip absolute top-1.5 left-9 bg-ink text-white" title={ph.asset?.description}><Wand2 size={11} />مرسوم{ph.asset?.rev && ph.asset.rev > 1 ? ` r${ph.asset.rev}` : ''}</span>}
               {ph.source === 'gpt-image' && <span className="chip absolute top-1.5 left-9 bg-gold text-white" title={ph.prompt}><Wand2 size={11} />مولّد{ph.asset?.rev && ph.asset.rev > 1 ? ` r${ph.asset.rev}` : ''}</span>}
               <button className="absolute bottom-1.5 left-1.5 h-7 px-2 rounded-lg bg-graphite/85 text-ivory text-[11.5px] font-semibold flex items-center gap-1 opacity-0 group-hover:opacity-100 transition"
                 onClick={() => onEditAsset(ph)} title="عدّل نفس الصورة بكلامك"><Wand2 size={12} /> عدّل</button>

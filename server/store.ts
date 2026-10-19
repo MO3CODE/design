@@ -10,9 +10,9 @@ export const now = () => new Date().toISOString();
 
 export interface Photo {
   id: string; name: string; file: string; w: number; h: number; aspect: number; alpha: boolean; bytes: number;
-  note?: string; uploadedAt: string; source?: 'upload' | 'gpt-image'; prompt?: string;
+  note?: string; uploadedAt: string; source?: 'upload' | 'gpt-image' | 'code-drawn'; prompt?: string;
   /** أصل مولّد: نوعه وسجل تعديلاته (كل تعديل = صورة جديدة مربوطة بالأصل root/parent) */
-  asset?: { kind: string; description?: string; rev: number; root?: string; parent?: string; slide?: number; field?: string;
+  asset?: { kind: string; description?: string; rev: number; root?: string; parent?: string; slide?: number; field?: string; html?: string;
     history?: { at: string; instruction: string; prompt: string }[] };
 }
 export interface QcSummary { score: number; errors: string[]; warnings: string[]; lint: string[] }
@@ -137,9 +137,34 @@ export function blankPost(n: number, fields: Partial<Post>): Post {
 let taste: { md: string; at: number } | null = null;
 export async function loadTaste(maxAgeMs = 15000) {
   if (taste && Date.now() - taste.at < maxAgeMs) return taste.md;
-  const md = (await readText('taste-log.md')) ?? fs.readFileSync(path.join(ENGINE, 'knowledge', 'taste-log.md'), 'utf8');
+  const skill = fs.readFileSync(path.join(ENGINE, 'knowledge', 'taste-log.md'), 'utf8');
+  const stored = await readText('taste-log.md');
+  let md = stored ?? skill;
+  if (stored !== null) {   // تحديث المهارة: ندمج سطورها الجديدة مع اللي تعلّمه الموقع (مرة وحدة لكل نسخة)
+    const merged = mergeSkillTaste(stored, skill);
+    if (merged !== stored) { md = merged; await writeText('taste-log.md', md); }
+  }
   taste = { md, at: Date.now() };
   return md;
+}
+const SYNC_TAG = '<!-- skill-sync:';
+function mergeSkillTaste(stored: string, skill: string): string {
+  const sig = crypto.createHash('sha1').update(skill).digest('hex').slice(0, 12);
+  if (stored.includes(`${SYNC_TAG}${sig} -->`)) return stored;
+  const out = stored.replace(/\r/g, '').replace(/\n?<!-- skill-sync:\w+ -->\n?/g, '\n').trimEnd().split('\n');
+  const src = skill.replace(/\r/g, '').split('\n');
+  const key = (l: string) => l.startsWith('|') ? l.split('|')[1].trim() : null;
+  const count = (arr: string[], k: string) => arr.filter(l => key(l) === k).length;
+  let anchor = -1;
+  for (const line of src) {
+    const at = out.indexOf(line);
+    if (at >= 0 || !line.trim()) { if (at >= 0) anchor = at; continue; }
+    const k = key(line);
+    // صف جدول تحدّث نصه (نفس العنوان، ومفرد بالطرفين) → نستبدله بدل ما نكرره
+    if (k && count(src, k) === 1 && count(out, k) === 1) { const j = out.findIndex(l => key(l) === k); out[j] = line; anchor = j; continue; }
+    out.splice(anchor + 1, 0, line); anchor++;
+  }
+  return `${out.join('\n')}\n\n${SYNC_TAG}${sig} -->\n`;
 }
 export function getTaste(): string {
   return taste?.md ?? ((!BLOB && fs.existsSync(path.join(DATA, 'taste-log.md'))) ? fs.readFileSync(path.join(DATA, 'taste-log.md'), 'utf8')

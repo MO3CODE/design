@@ -18,7 +18,8 @@ import { lintSpec } from './lint.js';
 import { designPost, revisePost, variantsPost, polishCaption, manualVersion, autoAssetsPost, editAssetPost } from './ai/designer.js';
 import { startJob, getJob, isBusy, summary, subscribe, cancelJob, projectJobs, kick, runStored, registerRunner } from './jobs.js';
 import { listModels, resolveTier } from './ai/router.js';
-import { generate as generateImage, assetModel, testImageProvider } from './ai/images.js';
+import { generate as generateImage, assetModel, testImageProvider, imagesAvailable } from './ai/images.js';
+import { drawElement } from './ai/draw.js';
 import { summary as usageSummary, live as usageLive, pricesChanged, priceOf, flushUsage } from './usage.js';
 import { getSettings, loadSettings, saveSettings, publicSettings } from './settings.js';
 import { BLOB, IS_VERCEL, absOf, keyOf, fileUrl, persist, removePrefix, signedUrl, ensureLocal, mimeOf } from './storage.js';
@@ -31,6 +32,7 @@ registerRunner('variants', (pid, postId, p, e) => variantsPost(pid, postId, Numb
 registerRunner('caption', (pid, postId, _p, e) => polishCaption(pid, postId, e));
 registerRunner('manual', (pid, postId, p, e) => manualVersion(pid, postId, p.spec, e, p.label));
 registerRunner('assets', (pid, postId, p, e) => autoAssetsPost(pid, postId, e, p));
+registerRunner('draw', async (pid, postId, p, e) => ({ photo: await drawElement(pid, postId, { description: String(p.description || ''), w: p.w, h: p.h, review: p.review !== false, pro: true, emit: e }) }));
 registerRunner('asset_edit', (pid, postId, p, e) => editAssetPost(pid, postId, p.photoId, p.instruction, e, p.apply !== false));
 
 export const app = express();
@@ -92,7 +94,7 @@ app.get('/api/health', wrap(async (_req, res) => {
   res.json({
     provider: s.provider, aiReady: s.provider === 'anthropic' ? !!s.anthropicKey : !!s.radoxKey,
     cutout: cutoutAvailable(), fonts: fontStatus(), exportScale: cfg.exportScale,
-    mode: BLOB ? 'vercel' : 'local', storageReady: !IS_VERCEL || BLOB, keysFromEnv: IS_VERCEL,
+    mode: BLOB ? 'vercel' : 'local', imagesReady: await imagesAvailable().catch(() => false), storageReady: !IS_VERCEL || BLOB, keysFromEnv: IS_VERCEL,
   });
 }));
 
@@ -268,6 +270,11 @@ app.post('/api/projects/:pid/posts/:postId/caption', wrap((req, res) => jobRoute
 app.post('/api/projects/:pid/posts/:postId/manual', wrap((req, res) => jobRoute(req, res, 'manual', 'تعديل يدوي', { spec: req.body?.spec, label: req.body?.label })));
 app.post('/api/projects/:pid/posts/:postId/assets/auto', wrap((req, res) => jobRoute(req, res, 'assets', 'أصول GPT Image', {
   target: req.body?.target, note: req.body?.note, versionId: req.body?.versionId, slides: Array.isArray(req.body?.slides) ? req.body.slides.map(Number) : undefined })));
+app.post('/api/projects/:pid/posts/:postId/draw', wrap(async (req, res) => {
+  const d = String(req.body?.description || '').trim();
+  if (!d) throw new HttpError(400, 'اكتب وصف العنصر');
+  await jobRoute(req, res, 'draw', 'رسم عنصر بالكود', { description: d, w: Number(req.body?.w) || undefined, h: Number(req.body?.h) || undefined, review: req.body?.review !== false });
+}));
 app.post('/api/projects/:pid/posts/:postId/photos/:photoId/edit', wrap(async (req, res) => {
   const ins = String(req.body?.instruction || '').trim();
   if (!ins) throw new HttpError(400, 'اكتب التعديل المطلوب');

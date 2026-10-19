@@ -46,7 +46,7 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
   // قراءة البث تتوقف لما تطلع من الصفحة — المهمة نفسها تكمل على السيرفر
   const readers = useRef<AbortController | null>(null);
   useEffect(() => () => readers.current?.abort(), []);
-  const DONE_TEXT: Record<string, string> = { design: 'جاهز — راجع التصميم', revise: 'تم التعديل', variants: 'الخيارات جاهزة — قارن بينها', caption: 'تم تدقيق الكابشن', manual: 'انرسمت النسخة اليدوية', assets: 'الأصول جاهزة ومركّبة بالتصميم', asset_edit: 'تم تعديل الأصل' };
+  const DONE_TEXT: Record<string, string> = { design: 'جاهز — راجع التصميم', revise: 'تم التعديل', variants: 'الخيارات جاهزة — قارن بينها', caption: 'تم تدقيق الكابشن', manual: 'انرسمت النسخة اليدوية', assets: 'الأصول جاهزة ومركّبة بالتصميم', asset_edit: 'تم تعديل الأصل', draw: 'انرسم العنصر وانضاف للصور' };
 
   /** يتابع أحداث مهمة (جديدة أو شغالة من قبل) ويعرضها بالسجل */
   async function follow(open: (onEvent: (ev: any) => void, signal: AbortSignal) => Promise<any>, doneText?: string) {
@@ -173,7 +173,8 @@ export default function PostPage({ pid, postId, health }: { pid: string; postId:
         onEdit={(id, ins, apply) => run(`/photos/${id}/edit`, { instruction: ins, apply }, 'تم تعديل الأصل')}
         onUseRevision={(from, to) => { if (!version) return; const swap = (o: any): any => Array.isArray(o) ? o.map(swap) : o && typeof o === 'object' ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, k === 'src' && v === from ? to : swap(v)])) : o;
           run('/manual', { spec: swap(version.spec), label: 'نسخة أصل سابقة' }, 'تم'); }} />
-      <ImageGen open={gen.open} prefill={gen.prefill} onClose={() => setGen({ open: false })} pid={pid} post={post} onDone={p => setPost(p)} />
+      <ImageGen open={gen.open} prefill={gen.prefill} onClose={() => setGen({ open: false })} pid={pid} post={post} onDone={p => setPost(p)}
+        imagesReady={!!health?.imagesReady} onDraw={(d, w, h) => { setTab('photos'); run('/draw', { description: d, w, h }, DONE_TEXT.draw); }} />
       <Modal open={!!cap} onClose={() => setCap(null)} title="تدقيق الكابشن" wide
         footer={<><button className="btn-ghost" onClick={() => setCap(null)}>إغلاق</button>
           <button className="btn-primary" disabled={!version} onClick={async () => { setPost(await api.patch<Post>(`${url}/versions/${version!.id}`, { caption: cap!.caption, hashtags: cap!.hashtags })); setCap(null); toast('ok', 'تم تحديث الكابشن بالنسخة'); }}>اعتمد التصحيح</button></>}>

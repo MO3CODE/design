@@ -102,6 +102,11 @@ function Shell({ canLogout }: { canLogout: boolean }) {
               <AlertTriangle size={15} className="shrink-0 mt-0.5" /><span className={inPost ? 'hidden' : 'hidden lg:inline'}>أضف مفتاح الـ API لتفعيل التصميم الذكي</span>
             </a>
           )}
+          {health && health.fonts && health.fonts.expo === false && (
+            <a href="#/settings" className="flex items-start gap-2 rounded-xl bg-sun/10 border border-sun/25 p-3 text-[12px] text-sun/90 leading-relaxed" title="الخط الأساسي Expo Arabic مو مثبت — التصاميم تنرسم مؤقتاً بثمانية">
+              <AlertTriangle size={15} className="shrink-0 mt-0.5" /><span className={inPost ? 'hidden' : 'hidden lg:inline'}>ثبّت خط Expo Arabic من الإعدادات ← الخطوط (مؤقتاً: ثمانية)</span>
+            </a>
+          )}
           {canLogout && (
             <button onClick={async () => { await api.post('/api/logout'); location.reload(); }} className="w-full flex items-center justify-center lg:justify-start gap-3 rounded-xl px-3 h-10 text-[13px] text-ivory/45 hover:text-ivory hover:bg-white/[.04]">
               <LogOut size={17} /><span className="hidden lg:inline">خروج</span>

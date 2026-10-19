@@ -93,3 +93,9 @@
 - `cutout` يقص الخلفية (rembg/BiRefNet) ويبقي أكبر جسم فقط. **افتح النتيجة** — لو بقيت أطراف، استخدم `crop`.
 - `prop` بديل الصور (مرسوم بالكود): `{"type":"document|checklist|idcard|stamp","title","at","rotate","scale"}`.
 
+
+## ملف قابل للتعديل في Illustrator (طلب المستخدم — منشور 07)
+`node scripts/render_pdf.js <قالب.html> <out.pdf> [photo]` → PDF متجهي: النص حي (Type0)، الشعار متجه، الصور منفصلة.
+- **ثمانية سيرف OTF يطلع Type3 (مخطط، ما يتعدّل)** → حوّله TTF أولاً: `otf2ttf.py` (شغّله من خارج مجلد scripts، لأن `scripts/calendar.py` يغطّي مكتبة بايثون).
+- سطّح الخلفية (تدرج + توهج + تكستشر + حبيبات) لصورة وحدة بـ render_html.js، لأن blend/backdrop-filter تتغير بالـ PDF؛ والزجاج يصير لون شفاف ثابت.
+- سلّم مجلد `editable/`: PDF + الخطوط + الصور + اقرأني (ثبّت الخطوط، والعربي يُعاد كتابته بأداة النص لو تعدّل).

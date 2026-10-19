@@ -1,6 +1,6 @@
 // عميل الـ API + أنواع البيانات
-export interface Photo { id: string; name: string; file: string; w: number; h: number; aspect: number; alpha: boolean; bytes: number; note?: string; source?: 'upload' | 'gpt-image'; prompt?: string;
-  asset?: { kind: string; description?: string; rev: number; root?: string; parent?: string; slide?: number; field?: string; history?: { at: string; instruction: string; prompt: string }[] } }
+export interface Photo { id: string; name: string; file: string; w: number; h: number; aspect: number; alpha: boolean; bytes: number; note?: string; source?: 'upload' | 'gpt-image' | 'code-drawn'; prompt?: string;
+  asset?: { kind: string; description?: string; rev: number; root?: string; parent?: string; slide?: number; field?: string; html?: string; history?: { at: string; instruction: string; prompt: string }[] } }
 export interface QcSummary { score: number; errors: string[]; warnings: string[]; lint: string[] }
 export interface Version {
   id: string; n: number; createdAt: string; source: 'ai' | 'manual' | 'draft' | 'variant'; label?: string; concept?: string;

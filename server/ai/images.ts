@@ -156,6 +156,7 @@ export async function editPhoto(pid: string, postId: string, photoId: string, in
 export const PLAN_SYS = `أنت مدير فني يقرأ تصميم سوشال جاهز (صورة الشرائح + spec المحرك + المحتوى) ويقرر الأصول البصرية الناقصة اللي ترفع التصميم،
 ثم تكتب لكل أصل برومبت GPT Image ومكانه بالـ spec.
 أنواع الأصل:
+- drawn: **شيء** مرسوم بالكود بـ Claude (بوصلة، مفتاح، ختم، ملف، لوح مشبك، أوراق، تقويم، ميزان…) بأسلوب الهوية المادي الفاخر — يوضع بـ slides[i].photo كعنصر cutout. للأشياء فقط (لا أشخاص).
 - element: عنصر بطل/داعم معزول بخلفية شفافة (شخص، ملف، ختم، مفتاح، مبنى…) — يوضع بـ slides[i].photo مثل:
   {"area":"cutout","side":"center","h":0.5,"bottom":100,"treat":"none","grain":0,"fade_bottom":0.2}
 - layer: طبقة خلفية **بخلفية شفافة** تقعد خلف المحتوى (أفق الرياض، مبنى، معمار، شريط مشهد) — توضع بـ slides[i].bg_photo مثل:
@@ -164,9 +165,9 @@ export const PLAN_SYS = `أنت مدير فني يقرأ تصميم سوشال �
 لو الشريحة فيها أصل مناسب أصلاً لا تضيف لها. الأحجام بالنسبة لكانفس 1080×1350 (منشور).
 ${STYLE}
 أرجع JSON فقط:
-{"assets":[{"slide":1,"kind":"element|layer","why":"سطر بالعربي ليش","description":"وصف عربي قصير","prompt":"English GPT Image prompt","aspect":"1:1|4:5|3:4|2:3|9:16|16:9|3:2","field":"photo|bg_photo","value":{...حقول المحرك بدون src}}]}`;
+{"assets":[{"slide":1,"kind":"drawn|element|layer","why":"سطر بالعربي ليش","description":"وصف عربي قصير","prompt":"English GPT Image prompt","aspect":"1:1|4:5|3:4|2:3|9:16|16:9|3:2","field":"photo|bg_photo","value":{...حقول المحرك بدون src}}]}`;
 
-export interface PlannedAsset { slide: number; kind: 'element' | 'layer'; why: string; description: string; prompt: string; aspect: string; field: 'photo' | 'bg_photo'; value: any }
+export interface PlannedAsset { slide: number; kind: 'element' | 'layer' | 'drawn'; why: string; description: string; prompt: string; aspect: string; field: 'photo' | 'bg_photo'; value: any }
 
 export async function generateAsset(pid: string, postId: string, a: PlannedAsset): Promise<Photo> {
   const size = SIZES[a.aspect] || (a.kind === 'element' ? SIZES['1:1'] : SIZES['3:2']);
@@ -193,4 +194,17 @@ export async function testImageProvider(): Promise<{ ok: boolean; provider: stri
     const b64 = j.data?.[0]?.b64_json;
     return { ok: !!b64, provider, model: s.imageModel, ms: Date.now() - t0, message: b64 ? 'يشتغل ✓' : 'رد بدون صورة', image: b64 ? `data:image/jpeg;base64,${b64}` : undefined };
   } catch (e: any) { return { ok: false, provider, model: s.imageModel, message: e.message, ms: Date.now() - t0 }; }
+}
+
+/** هل خدمة رسم الصور متاحة بالمنصة؟ (فحص رخيص بدون توليد — كاش ساعة) */
+let imgAvail: { v: boolean; at: number } | null = null;
+export async function imagesAvailable(): Promise<boolean> {
+  if (imgAvail && Date.now() - imgAvail.at < 3600e3) return imgAvail.v;
+  const s = getSettings(); let v = false;
+  try {
+    const r = await fetch(s.radoxBaseUrl.replace(/\/$/, '') + '/images/generations', { method: 'POST', headers: { Authorization: `Bearer ${s.radoxKey}`, 'Content-Type': 'application/json' }, body: '{}' });
+    v = r.status !== 404;
+  } catch {}
+  imgAvail = { v, at: Date.now() };
+  return v;
 }
